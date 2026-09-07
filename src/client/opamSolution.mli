@@ -96,7 +96,8 @@ val install_sys_packages:
    launched, without asking user (used by the `--depext-only` option). If
    [force_depext] is true, it overrides [OpamFile.Config.depext] value. *)
 val install_depexts: ?force_depext:bool -> ?confirm:bool -> rw switch_state ->
-  pkg_to_install:package_set -> pkg_installed:package_set -> rw switch_state
+  pkg_to_install:package_selection -> pkg_installed:package_selection ->
+  rw switch_state
 
 (** {2 Atoms} *)
 

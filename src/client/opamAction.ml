@@ -932,7 +932,7 @@ let cleanup_package_artefacts t nv =
   let remove_dir = OpamPath.Switch.remove t.switch_global.root t.switch nv in
   if OpamFilename.exists_dir remove_dir then OpamFilename.rmdir remove_dir;
   let dev_dir = OpamSwitchState.source_dir t nv in
-  if not (OpamPackage.Set.mem nv t.installed) then
+  if not (OpamPackage.Selection.mem nv t.installed) then
     (log "Removing the local metadata";
      OpamSwitchAction.remove_metadata t (OpamPackage.Set.singleton nv);
      if not (OpamPackage.Set.mem nv t.pinned) then
@@ -943,10 +943,10 @@ let sources_needed st g =
       match act with
       | `Remove nv ->
         if removal_needs_download st nv
-        then OpamPackage.Set.add nv acc else acc
-      | `Install nv -> OpamPackage.Set.add nv acc
+        then OpamPackage.Selection.add nv acc else acc
+      | `Install nv -> OpamPackage.Selection.add nv acc
       | _ -> assert false)
-    g OpamPackage.Set.empty
+    g OpamPackage.Selection.empty
 
 let remove_package t ?silent ?changes ?force ?build_dir nv =
   if OpamClientConfig.(!r.fake) || OpamClientConfig.(!r.show) then
