@@ -135,6 +135,36 @@ val list: OpamFilename.Dir.t -> Set.t
     their eventual prefixes). *)
 val prefixes: OpamFilename.Dir.t -> string option Map.t
 
+module Selection : sig
+  exception Multiple_versions of Name.t
+
+  type package = t
+  type t = package Name.Map.t
+
+  val empty : t
+  val find : Name.t -> t -> package
+  val find_opt : Name.t -> t -> package option
+  val has_name : Name.t -> t -> bool
+  val mem : package -> t -> bool
+  val fold : (package -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+  val filter : (package -> bool) -> t -> t
+
+  (** [add pkg t] adds package [pkg] to the selection [t]. If another version of this
+      package was already in [t], replace it with [pkg]. *)
+  val add : package -> t -> t
+
+  (** [remove pkg t] removes [pkg] from [t] if it was included in the selection,
+      returns it unchanged otherwise. *)
+  val remove : package -> t -> t
+
+  (** Builds a selection from a set of packages.
+      @raises [Invalig_argument _] if the given set contains more than one
+      version of any given package. *)
+  val from_package_set : Set.t -> t
+
+  val to_package_set : t -> Set.t
+end
+
 (** {2 Errors} *)
 
 (** Parallel executions. *)

@@ -319,3 +319,59 @@ let max_version set name =
   create name version
 
 module Graph = (OpamParallel.MakeGraph (O) : OpamParallel.GRAPH with type V.t = t)
+
+module Selection = struct
+  exception Multiple_versions of Name.t
+
+  let multiple_versions n = raise (Multiple_versions n)
+
+  type package = t
+  type t = package Name.Map.t
+
+  let empty = Name.Map.empty
+
+  let find = Name.Map.find
+  let find_opt = Name.Map.find_opt
+
+  let has_name n t =
+    match find_opt n t with
+    | Some _ -> true
+    | None -> false
+
+  let mem nv t =
+    match find_opt nv.name t with
+    | Some nv' -> Version.equal nv.version nv'.version
+    | None -> false
+
+  let add nv t = Name.Map.add nv.name nv t
+
+  let remove nv t =
+    Name.Map.update nv.name
+      (function
+        | None -> None
+        | Some nv' when Version.equal nv.version nv'.version -> None
+        | Some nv' -> Some nv')
+      t
+
+  let fold f t acc = Name.Map.fold (fun _n -> f) t acc
+
+  let filter f t = Name.Map.filter (fun _n -> f) t
+
+  (* This one should be temporary and only useful for intermediate commits in
+     this PR *)
+  let from_package_set set =
+    Set.fold
+      (fun nv acc ->
+         Name.Map.update nv.name
+           (function
+             | None -> Some nv
+             | _ ->
+               (* if we reach this, the versions differ *)
+               multiple_versions nv.name)
+           acc)
+      set
+      empty
+
+  let to_package_set t =
+    Name.Map.fold (fun _name nv acc -> Set.add nv acc) t Set.empty
+end

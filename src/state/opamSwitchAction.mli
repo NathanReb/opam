@@ -68,7 +68,7 @@ val remove_from_installed:
 (** Update the switch selections with the supplied optional arguments. Changes
     are written to disk and returned *)
 val update_switch_state:
-  ?installed: package_set ->
+  ?installed: package_selection ->
   ?installed_roots: package_set ->
   ?reinstall: package_set ->
   ?pinned: package_set ->
