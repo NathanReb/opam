@@ -62,7 +62,7 @@ let build_condition_map tog st =
           if String.equal v (OpamVariable.Full.to_string var) then
             c else None) vars
   in
-  OpamPackage.Set.fold (fun package cmap ->
+  OpamPackage.Selection.fold (fun package cmap ->
       let map =
         OpamSwitchState.opam st package
         |> OpamFile.OPAM.depends
@@ -120,19 +120,19 @@ let cut_leaves (mode: [ `succ | `pred]) ~names ~root st graph =
   (* compute the packages which are connected to one of the `names` *)
   let rec go package set =
     fold (fun p ps ->
-        if OpamPackage.Set.mem p ps then ps
+        if OpamPackage.Selection.mem p ps then ps
         else
-        let ps = OpamPackage.Set.add p ps in
+        let ps = OpamPackage.Selection.add p ps in
         if not (is_final p) then go p ps
         else ps
       ) graph package set
   in
-  let packages = names |> OpamPackage.Set.fold go names in
+  let packages = names |> OpamPackage.Selection.fold go names in
   (* cut leaves not belonging to the packages *)
-  OpamPackage.Set.diff st.installed packages
-  |> OpamPackage.Set.iter (OpamSolver.PkgGraph.remove_vertex graph);
+  OpamPackage.Selection.diff st.installed packages
+  |> OpamPackage.Selection.iter (OpamSolver.PkgGraph.remove_vertex graph);
   (* return the new roots and the new graph *)
-  OpamPackage.Set.inter root packages, graph
+  OpamPackage.Selection.inter root packages, graph
 
 let build_deps_forest st universe tog filter names =
   let { OpamListCommand.build; post; _ } = tog in
@@ -142,17 +142,15 @@ let build_deps_forest st universe tog filter names =
         ~depopts:false ~build ~post ~installed:true ~unavailable:false
         universe
     in
-    let root =
-      st.installed |> OpamPackage.Set.filter (is_root graph)
-    in
-    match OpamPackage.Set.is_empty names, filter with
+    let root = OpamPackage.Selection.filter (is_root graph) st.installed in
+    match OpamPackage.Selection.is_empty names, filter with
     | false, Roots_from  -> names, graph
     | false, Leads_to -> cut_leaves `pred ~names ~root st graph
     | true, _ -> root, graph
   in
   let condition_map = build_condition_map tog st in
   let rec build visited package node =
-    if visited |> OpamPackage.Set.mem package then
+    if visited |> OpamPackage.Selection.mem package then
       let node =
         match node with
         | Root p -> Root p (* but impossible *)
@@ -160,7 +158,7 @@ let build_deps_forest st universe tog filter names =
       in
       visited, Tree.create node
     else
-    let visited = visited |> OpamPackage.Set.add package in
+    let visited = visited |> OpamPackage.Selection.add package in
     let conditions = condition_map |> OpamPackage.Map.find package in
     let succ = OpamSolver.PkgGraph.succ graph package in
     let visited, children =
@@ -178,8 +176,8 @@ let build_deps_forest st universe tog filter names =
     build visited package (Root package)
   in
   root
-  |> OpamPackage.Set.elements
-  |> List.fold_left_map build_root OpamPackage.Set.empty
+  |> OpamPackage.Selection.elements
+  |> List.fold_left_map build_root OpamPackage.Selection.empty
   |> snd
 
 let build_revdeps_forest st universe tog filter names =
@@ -190,17 +188,15 @@ let build_revdeps_forest st universe tog filter names =
         ~depopts:false ~build ~post ~installed:true ~unavailable:false
         universe
     in
-    let root =
-      st.installed |> OpamPackage.Set.filter (is_leaf graph)
-    in
-    match OpamPackage.Set.is_empty names, filter with
+    let root = OpamPackage.Selection.filter (is_leaf graph) st.installed in
+    match OpamPackage.Selection.is_empty names, filter with
     | false, Roots_from  -> names, graph
     | false, Leads_to -> cut_leaves `succ ~names ~root st graph
     | true, _ -> root, graph
   in
   let condition_map = build_condition_map tog st in
   let rec build visited package node =
-    if visited |> OpamPackage.Set.mem package then
+    if visited |> OpamPackage.Selection.mem package then
       let node =
         match node with
         | Root p -> Root p (* but impossible *)
@@ -208,7 +204,7 @@ let build_revdeps_forest st universe tog filter names =
       in
       visited, Tree.create node
     else
-    let visited = visited |> OpamPackage.Set.add package in
+    let visited = visited |> OpamPackage.Selection.add package in
     let pred = OpamSolver.PkgGraph.pred graph package in
     let visited, children =
       List.fold_left_map (fun visited child ->
@@ -226,12 +222,12 @@ let build_revdeps_forest st universe tog filter names =
     visited, Tree.create ~children node
   in
   let build_root visited package =
-    let visited = OpamPackage.Set.(remove package (union visited root)) in
+    let visited = OpamPackage.Selection.(remove package (union visited root)) in
     build visited package (Root package)
   in
   root
-  |> OpamPackage.Set.elements
-  |> List.fold_left_map build_root OpamPackage.Set.empty
+  |> OpamPackage.Selection.elements
+  |> List.fold_left_map build_root OpamPackage.Selection.empty
   |> snd
 
 let build st universe tog mode filter names =
@@ -393,8 +389,10 @@ let dry_install tog st universe install =
     print_solution st new_st
       (OpamPackage.Name.Set.of_list (List.map fst install))
       solution;
-    let requested = OpamFormula.packages_of_atoms new_st.installed install in
-    new_st, get_universe tog requested new_st
+    let requested =
+      OpamFormula.packages_sel_of_atoms new_st.installed install
+    in
+    new_st, get_universe tog (OpamPackage.Selection.to_set requested) new_st
   | Conflicts cs ->
     OpamConsole.error
       "Could not simulate installing the specified package(s) to this switch:";
@@ -404,23 +402,26 @@ let dry_install tog st universe install =
     OpamStd.Sys.exit_because `No_solution
 
 let run st tog ?no_constraint mode filter atoms =
-  let open OpamPackage.Set.Op in
+  let open OpamPackage.Selection.Op in
   let select, missing =
     List.fold_left (fun (select, missing) atom ->
         let installed =
-          OpamPackage.Set.filter (OpamFormula.check atom) st.installed
+          OpamPackage.Selection.filter (OpamFormula.check atom) st.installed
         in
-        if OpamPackage.Set.is_empty installed then
+        if OpamPackage.Selection.is_empty installed then
           (select, atom :: missing)
         else
           (installed ++ select, missing))
-      (OpamPackage.Set.empty, []) atoms
+      (OpamPackage.Selection.empty, []) atoms
   in
   let st, universe =
     let universe =
       let requested =
-        OpamFormula.packages_of_atoms
-          (if missing = [] then st.installed else st.packages) atoms
+        if missing = [] then
+          OpamFormula.packages_sel_of_atoms st.installed atoms
+          |> OpamPackage.Selection.to_set
+        else
+          OpamFormula.packages_of_atoms st.packages atoms
       in
       get_universe tog requested st
     in
@@ -436,15 +437,15 @@ let run st tog ?no_constraint mode filter atoms =
           (match missing with | [_] -> "" | _ -> "s")
           (OpamStd.Format.pretty_list
              (List.map OpamFormula.string_of_atom missing));
-      if OpamPackage.Set.is_empty select && atoms <> [] then
+      if OpamPackage.Selection.is_empty select && atoms <> [] then
         OpamConsole.error_and_exit `Not_found "No package to display"
       else
         st, universe
   in
-  if OpamPackage.Set.is_empty st.installed then
+  if OpamPackage.Selection.is_empty st.installed then
     OpamConsole.error_and_exit `Not_found "No package is installed"
   else
-  let simulated = OpamFormula.packages_of_atoms st.installed missing in
+  let simulated = OpamFormula.packages_sel_of_atoms st.installed missing in
   let forest =
     build st universe tog mode filter (select ++ simulated)
   in

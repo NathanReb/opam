@@ -15,7 +15,7 @@ let log fmt = OpamConsole.log "AUXCMD" fmt
 let slog = OpamConsole.slog
 
 let package_file_changes st packages =
-  OpamPackage.Set.fold (fun nv acc ->
+  OpamPackage.Selection.fold (fun nv acc ->
       let f =
         OpamPath.Switch.changes st.switch_global.root st.switch nv.name
       in

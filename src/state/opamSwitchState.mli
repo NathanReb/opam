@@ -206,6 +206,11 @@ val depexts_unavailable: 'a switch_state -> package -> OpamSysPkg.Set.t option
     (all their versions) are excluded from the result. *)
 val conflicts_with: 'a switch_state -> package_set -> package_set -> package_set
 
+(** Same as [conflicts_with] but operates on package selections rather than
+    sets *)
+val conflicts_with_sel:
+  'a switch_state -> package_set -> package_selection -> package_selection
+
 (** Put the package data in a form suitable for the solver, pre-computing some
     maps and sets. Packages in the [requested] set are the ones that will get
     affected by the global [build_test] and [build_doc] flags. [test] and [doc],

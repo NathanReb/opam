@@ -260,6 +260,7 @@ let install_compiler
   in
   let t =
     let base_comp =
+      let open OpamPackage.Selection.Op in
       OpamSwitchState.compute_invariant_packages
         { t with installed = t.installed
                              -- (OpamSolver.removed_packages solution)
@@ -269,12 +270,13 @@ let install_compiler
   in
   let skip =
     if deps_only then
-      let pkgs =
-        OpamPackage.packages_of_names (OpamSolver.new_packages solution)
-          add_names
-      in
-      OpamPackage.Set.fold (fun nv map -> OpamPackage.Map.add nv nv map)
-        pkgs OpamPackage.Map.empty
+      let new_packages = OpamSolver.new_packages solution in
+      OpamPackage.Name.Set.fold
+        (fun name acc ->
+           match OpamPackage.Selection.find_opt name new_packages with
+           | Some nv -> OpamPackage.Map.add nv nv acc
+           | None -> acc)
+        add_names OpamPackage.Map.empty
     else OpamPackage.Map.empty
   in
   let t, result =
@@ -677,7 +679,7 @@ let reinstall init_st =
   OpamFilename.cleandir (OpamPath.Switch.installed_opams gt.root switch);
   let st =
     { init_st with
-      installed = OpamPackage.Set.empty;
+      installed = OpamPackage.Selection.empty;
       installed_roots = OpamPackage.Set.empty;
       reinstall = lazy OpamPackage.Set.empty; }
   in

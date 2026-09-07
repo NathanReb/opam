@@ -135,6 +135,93 @@ val list: OpamFilename.Dir.t -> Set.t
     their eventual prefixes). *)
 val prefixes: OpamFilename.Dir.t -> string option Map.t
 
+module Selection : sig
+  exception Multiple_versions of Name.t
+
+  type package = t
+  type t
+
+  val empty : t
+  val is_empty : t -> bool
+  val find : Name.t -> t -> package
+  val find_opt : Name.t -> t -> package option
+  val find_set : Name.Set.t -> t -> t
+  val choose : t -> package
+  val has_name : Name.t -> t -> bool
+  val mem : package -> t -> bool
+  val elements : t -> package list
+  val fold : (package -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+  val iter : (package -> unit) -> t -> unit
+  val filter : (package -> bool) -> t -> t
+
+  (** [partition pred t] returns [t1 , t2] where [t1] is all elements of [t]
+      that satisfy [pred] and [t2] all elements that do not. *)
+  val partition: (package -> bool) -> t -> t * t
+
+  (** [add pkg t] adds package [pkg] to the selection [t]. If another version of this
+      package was already in [t], replace it with [pkg]. *)
+  val add : package -> t -> t
+
+  (** [remove pkg t] removes [pkg] from [t] if it was included in the selection,
+      returns it unchanged otherwise. *)
+  val remove : package -> t -> t
+
+  (** [remove_name name t] removes the package named [name] from the [t] if present,
+      returns [t] unchanged otherwise. *)
+  val remove_name : Name.t -> t -> t
+
+  (** [union ~on_conflit t1 t2] returns the union of the selection [t1] and [t2].
+      When [t1] and [t2] contain a different version of a given package each,
+      [conflict] is called to determine what to do.
+      By default, [conflict] will choose the version from the second
+      argument. *)
+  val union :
+    ?conflict: (package -> package -> package option) -> t -> t -> t
+
+  (** [inter ~on_conflit t1 t2] returns the intersection of the selection
+      [t1] and [t2]. *)
+  val inter : t -> t -> t
+
+  (** [diff ~on_conflit t1 t2] returns the diff of the selection [t1] and [t2],
+      i.e. packages that are in [t1] and not in [t2]. *)
+  val diff : t -> t -> t
+
+  (** [union_set t set] returns the union of the given selection and set. *)
+  val union_set : t -> Set.t -> Set.t
+
+  (** [set_inter t set] returns the intersection between the given selection and
+      set, i.e. elements of [t] that are also in [set]. *)
+  val set_inter : t -> Set.t -> t
+
+  (** [set_diff t set] returns the diff between the given selection and
+      set, i.e. elements of [t] that are not in [set]. *)
+  val set_diff : t -> Set.t -> t
+
+  (** Builds a selection from a set of packages.
+      When the given set contains more than one version of a given package,
+      [conflict] is called (first argument is the one already in the selection).
+      By default, raises [Multiple_version _] if the given set contains more
+      than one version of any given package. *)
+  val from_set :
+    ?conflict: (package -> package -> package option) -> Set.t -> t
+
+  val to_set : t -> Set.t
+
+  val names : t -> Name.Set.t
+
+  module Op : sig
+
+    (** Infix selection union with default conflict handling *)
+    val (++) : t -> t -> t
+
+    (** Infix selection difference *)
+    val (--) : t -> t -> t
+
+    (** Infix selection intersection *)
+    val (%%) : t -> t -> t
+  end
+end
+
 (** {2 Errors} *)
 
 (** Parallel executions. *)

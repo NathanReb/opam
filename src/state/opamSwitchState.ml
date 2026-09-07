@@ -159,10 +159,11 @@ let infer_switch_invariant_raw
 let infer_switch_invariant st =
   let compiler_packages =
     if OpamPackage.Set.is_empty st.compiler_packages then
-      OpamPackage.Set.filter (fun nv ->
+      OpamPackage.Selection.filter (fun nv ->
           OpamFile.OPAM.has_flag Pkgflag_Compiler
             (OpamPackage.Map.find nv st.opams))
         st.installed
+      |> OpamPackage.Selection.to_set
     else st.compiler_packages
   in
   let lazy available_packages = st.available_packages in
@@ -309,10 +310,11 @@ let load lock_kind gt rt switch =
       (OpamVersion.to_string (switch_config.opam_version))
       (OpamVersion.to_string
          OpamFile.Switch_config.oldest_compatible_format_version);
-  let { sel_installed = installed; sel_roots = installed_roots;
+  let { sel_installed; sel_roots = installed_roots;
         sel_pinned = pinned; sel_compiler = compiler_packages; } =
     load_selections ~lock_kind gt switch
   in
+  let installed = OpamPackage.Selection.from_set sel_installed in
   let pinned, pinned_opams, pinned_depexts =
     OpamPackage.Set.fold (fun nv (pinned,opams,pinned_depexts) ->
         let overlay_dir =
@@ -364,7 +366,7 @@ let load lock_kind gt rt switch =
         opams
     | None ->
       let opams =
-        OpamPackage.Set.fold (fun nv opams ->
+        OpamPackage.Selection.fold (fun nv opams ->
             OpamStd.Option.Op.(
               (OpamFile.OPAM.read_opt
                  (OpamPath.Switch.installed_opam gt.root switch nv)
@@ -392,7 +394,7 @@ let load lock_kind gt rt switch =
   in
   let packages = OpamPackage.keys opams in
   let installed_without_def =
-    OpamPackage.Set.fold (fun nv nodef ->
+    OpamPackage.Selection.fold (fun nv nodef ->
         if OpamPackage.Map.mem nv installed_opams then nodef else
         try
           let o = OpamPackage.Map.find nv opams in
@@ -490,7 +492,7 @@ let load lock_kind gt rt switch =
             OpamPackage.Name.of_string
               OpamFilename.(Base.to_string (basename (chop_extension f)))
           with
-          | name when OpamPackage.has_name installed name ->
+          | name when OpamPackage.Selection.has_name name installed ->
             OpamPackage.Name.Map.add name
               (OpamFile.Dot_config.safe_read
                  (OpamPath.Switch.config gt.root switch name))
@@ -503,7 +505,7 @@ let load lock_kind gt rt switch =
   in
   let ext_files_changed = lazy (
     OpamPackage.Name.Map.fold (fun name conf acc ->
-        let nv = OpamPackage.package_of_name installed name in
+        let nv = OpamPackage.Selection.find name installed in
         let path = lazy (
           OpamStd.Sys.split_path_variable (OpamStd.Env.get "PATH")
           |> List.map OpamFilename.Dir.of_string
@@ -589,7 +591,7 @@ let load lock_kind gt rt switch =
   let sys_packages_changed = lazy (
     let sys_packages =
       OpamPackage.Map.filter (fun pkg spkg ->
-          OpamPackage.Set.mem pkg installed
+          OpamPackage.Selection.mem pkg installed
           && not (OpamSysPkg.Set.is_empty spkg.OpamSysPkg.s_available
                   && OpamSysPkg.Set.is_empty spkg.OpamSysPkg.s_not_found))
         (Lazy.force sys_packages)
@@ -699,7 +701,7 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
       OpamFile.Switch_config.empty
       with OpamFile.Switch_config.repos = Some repos_list;
     };
-    installed = OpamPackage.Set.empty;
+    installed = OpamPackage.Selection.empty;
     installed_opams = OpamPackage.Map.empty;
     pinned = OpamPackage.Set.empty;
     installed_roots = OpamPackage.Set.empty;
@@ -714,8 +716,15 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
     overwrote_opams = OpamPackage.Map.empty;
   }
 
+let installed_set ?(filter=fun _ -> true) st =
+  OpamPackage.Selection.fold
+    (fun nv acc ->
+       if filter nv then OpamPackage.Set.add nv acc else acc)
+    st.installed
+    OpamPackage.Set.empty
+
 let selections st =
-  { sel_installed = st.installed;
+  { sel_installed = OpamPackage.Selection.to_set st.installed;
     sel_roots = st.installed_roots;
     sel_compiler = st.compiler_packages;
     sel_pinned = st.pinned; }
@@ -771,10 +780,10 @@ let package_config st name =
   OpamPackage.Name.Map.find name st.conf_files
 
 let is_name_installed st name =
-  OpamPackage.has_name st.installed name
+  OpamPackage.Selection.has_name name st.installed
 
 let find_installed_package_by_name st name =
-  OpamPackage.package_of_name st.installed name
+  OpamPackage.Selection.find name st.installed
 
 let packages_of_atoms st atoms = OpamFormula.packages_of_atoms st.packages atoms
 
@@ -839,9 +848,10 @@ let depexts_unavailable st nv =
 
 let dev_packages st =
   OpamPackage.Set.filter (is_dev_package st)
-    (st.installed ++ OpamPinned.packages st)
+    ((OpamPackage.Selection.to_set st.installed)
+     ++ OpamPinned.packages st)
 
-let conflicts_with st subset =
+let conflicts_with_helper st subset filter =
   let forward_conflicts, conflict_classes =
     OpamPackage.Set.fold (fun nv (cf,cfc) ->
         try
@@ -857,7 +867,7 @@ let conflicts_with st subset =
         with Not_found -> cf, cfc)
       subset (OpamFormula.Empty, OpamPackage.Name.Set.empty)
   in
-  OpamPackage.Set.filter
+  filter
     (fun nv ->
        not (OpamPackage.has_name subset nv.name) &&
        (OpamFormula.verifies forward_conflicts nv ||
@@ -874,6 +884,12 @@ let conflicts_with st subset =
           OpamPackage.Set.exists
             (OpamFormula.verifies backwards_conflicts) subset
        with Not_found -> false))
+
+let conflicts_with st subset set =
+  conflicts_with_helper st subset OpamPackage.Set.filter set
+
+let conflicts_with_sel st subset sel =
+  conflicts_with_helper st subset OpamPackage.Selection.filter sel
 
 let remove_conflicts st subset pkgs =
   pkgs -- conflicts_with st subset pkgs
@@ -941,7 +957,7 @@ let avoid_version st nv =
     || OpamFile.OPAM.has_flag Pkgflag_Deprecated opam
   in
   has_avoid_flag opam
-  && not ((OpamPackage.package_of_name_opt st.installed nv.name >>=
+  && not ((OpamPackage.Selection.find_opt nv.name st.installed >>=
            (fun nv -> OpamPackage.Map.find_opt nv st.installed_opams) >>|
            has_avoid_flag)
           +! false)
@@ -1096,7 +1112,7 @@ let universe st
 {
   u_packages  = st.packages;
   u_action = user_action;
-  u_installed = st.installed;
+  u_installed = OpamPackage.Selection.to_set st.installed;
   u_available;
   u_depends;
   u_depopts;
@@ -1118,7 +1134,7 @@ let dump_pef_state st oc =
   let print_def nv opam =
     Printf.fprintf oc "package: %s\n" (OpamPackage.name_to_string nv);
     Printf.fprintf oc "version: %s\n" (OpamPackage.version_to_string nv);
-    let installed = OpamPackage.Set.mem nv st.installed in
+    let installed = OpamPackage.Selection.mem nv st.installed in
     (* let root = OpamPackage.Set.mem nv st.installed_roots in *)
     let inv = OpamPackage.Set.mem nv st.compiler_packages in
     let pinned = OpamPackage.Set.mem nv st.pinned in
@@ -1414,10 +1430,9 @@ let dependencies_t st base_deps_compute deps_compute
     ~depopts ~installed ~unavailable packages =
   if OpamPackage.Set.is_empty packages then OpamPackage.Set.empty else
   let base =
-    packages ++
-    if installed then st.installed
-    else if unavailable then st.packages
-    else Lazy.force st.available_packages
+    if installed then OpamPackage.Selection.union_set st.installed packages
+    else if unavailable then packages ++ st.packages
+    else packages ++ (Lazy.force st.available_packages)
   in
   log ~level:3 "dependencies packages=%a"
     (slog OpamPackage.Set.to_string) packages;
@@ -1542,7 +1557,9 @@ let reverse_dependencies st ~build ~post =
 (* invariant computation *)
 
 let invariant_root_packages st =
-  OpamPackage.Set.filter (OpamFormula.verifies st.switch_invariant) st.installed
+  OpamPackage.Selection.filter (OpamFormula.verifies st.switch_invariant)
+    st.installed
+  |> OpamPackage.Selection.to_set
 
 let compute_invariant_packages st =
   let pkgs = invariant_root_packages st in
@@ -1551,10 +1568,10 @@ let compute_invariant_packages st =
 
 let compiler_packages st =
   let compiler_packages =
-    OpamPackage.Set.filter (fun nv ->
-        try OpamFile.OPAM.has_flag Pkgflag_Compiler (opam st nv)
-        with Not_found -> false)
-      st.installed
+    installed_set st
+      ~filter:(fun nv ->
+          try OpamFile.OPAM.has_flag Pkgflag_Compiler (opam st nv)
+          with Not_found -> false)
   in
   dependencies ~build:true ~post:false ~depopts:true ~installed:true
     ~unavailable:false st compiler_packages

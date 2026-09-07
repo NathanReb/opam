@@ -71,6 +71,9 @@ type package = OpamPackage.t = private {
 (** Set of packages *)
 type package_set = OpamPackage.Set.t
 
+(** Set of packages that contains at most one version of a given package. *)
+type package_selection = OpamPackage.Selection.t
+
 (** Map of packages *)
 type 'a package_map = 'a OpamPackage.Map.t
 

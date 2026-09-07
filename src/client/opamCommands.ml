@@ -1634,10 +1634,11 @@ let config cli =
               with Not_found -> ()
             in
             state.installed
-            |> OpamPackage.Set.filter (fun p ->
+            |> OpamPackage.Selection.filter (fun p ->
                 match OpamSwitchState.opam_opt state p with
                 | Some o -> OpamFile.OPAM.has_flag Pkgflag_Compiler o
                 | None -> false)
+            |> OpamPackage.Selection.to_set
             |> OpamSwitchState.dependencies ~depopts:true ~post:true ~build:true
               ~installed:true ~unavailable:false state
             |> OpamPackage.Set.iter process;
@@ -1905,7 +1906,11 @@ let install cli =
     in
     let atoms_or_locals =
       if restore then
-        let to_restore = OpamPackage.Set.diff st.installed_roots st.installed in
+        let to_restore =
+          OpamPackage.Set.filter
+            (fun nv -> not (OpamPackage.Selection.mem nv st.installed))
+            st.installed_roots
+        in
         if OpamPackage.Set.is_empty to_restore then
           OpamConsole.msg "No packages to restore found\n"
         else
@@ -1951,7 +1956,7 @@ let install cli =
     match destdir with
     | None -> `Ok ()
     | Some dest ->
-      let packages = OpamFormula.packages_of_atoms st.installed atoms in
+      let packages = OpamFormula.packages_sel_of_atoms st.installed atoms in
       OpamAuxCommands.copy_files_to_destdir st dest packages;
       `Ok ()
   in
@@ -2009,9 +2014,11 @@ let remove cli =
     | Some d ->
       OpamSwitchState.with_ `Lock_none gt @@ fun st ->
       let atoms = OpamAuxCommands.resolve_locals_pinned st atom_locs in
-      let packages = OpamFormula.packages_of_atoms st.installed atoms in
+      let packages = OpamFormula.packages_sel_of_atoms st.installed atoms in
       let uninst =
-        List.filter (fun (name, _) -> not (OpamPackage.has_name packages name))
+        List.filter
+          (fun (name, _) ->
+            not (OpamPackage.Selection.has_name name packages))
           atoms
       in
       if uninst <> [] then
@@ -3715,7 +3722,7 @@ let pin ?(unpin_only=false) cli =
        | Ok (name,version) ->
          OpamGlobalState.with_ `Lock_none @@ fun gt ->
          OpamSwitchState.with_ `Lock_write gt @@ fun st ->
-         match OpamPackage.package_of_name_opt st.installed name, version with
+         match OpamPackage.Selection.find_opt name st.installed, version with
          | Some nv, Some v when nv.version <> v ->
            OpamConsole.error_and_exit `Bad_arguments
              "%s.%s is not installed (version %s is), invalid flag `--current'"
@@ -4204,7 +4211,7 @@ let clean cli =
     let open OpamFilename in
     (* installed files *)
     let files, dirs =
-      OpamPackage.Set.fold (fun nv (files, dirs) ->
+      OpamPackage.Selection.fold (fun nv (files, dirs) ->
           let changes =
             OpamFile.Changes.safe_read
               (OpamPath.Switch.changes root sw (OpamPackage.name nv))
@@ -4356,9 +4363,10 @@ let clean cli =
              (OpamFilename.dirs (OpamPath.Switch.Overlay.dir root sw));
            let keep_sources_dir =
              OpamPackage.Set.elements
-               (OpamPackage.Set.union st.pinned
-                  (OpamPackage.Set.filter (OpamSwitchState.is_dev_package st)
-                     st.installed))
+               (OpamPackage.Selection.union_set
+                  (OpamPackage.Selection.filter (OpamSwitchState.is_dev_package st)
+                     st.installed)
+                  st.pinned)
              |> List.map (OpamSwitchState.source_dir st)
            in
            OpamFilename.dirs (OpamPath.Switch.sources_dir root sw) |>
@@ -4486,16 +4494,19 @@ let lock cli =
     OpamGlobalState.with_ `Lock_none @@ fun gt ->
     OpamSwitchState.with_ `Lock_none gt @@ fun st ->
     let st, packages = OpamLockCommand.select_packages atom_locs st in
-    if OpamPackage.Set.is_empty packages then
+    if OpamPackage.Selection.is_empty packages then
       OpamConsole.msg "No lock file generated\n"
     else
     let st =
       (* Suppose the packages are installed to avoid errors on mutual
          dependencies *)
-      { st with installed = OpamPackage.Set.union st.installed packages }
+      { st with installed =
+                  OpamPackage.Selection.union
+                    ~conflict:(fun _installed package -> Some package)
+                    st.installed packages }
     in
     let pkg_done =
-      OpamPackage.Set.fold (fun nv msgs ->
+      OpamPackage.Selection.fold (fun nv msgs ->
           let opam = OpamSwitchState.opam st nv in
           let locked =
             OpamLockCommand.lock_opam ~only_direct ~keep_local st opam

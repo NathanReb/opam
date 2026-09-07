@@ -131,7 +131,6 @@ type +'lock repos_state = {
 
 } constraint 'lock = 'lock lock
 
-
 (** State of a given switch: options, available and installed packages, etc.*)
 type +'lock switch_state = {
   switch_lock: OpamSystem.lock;
@@ -182,7 +181,7 @@ type +'lock switch_state = {
   (** The set of pinned packages (their metadata, including pinning target, is
       in {!field:opams}) *)
 
-  installed: package_set;
+  installed: package_selection;
   (** The set of all installed packages *)
 
   installed_opams: OpamFile.OPAM.t package_map;

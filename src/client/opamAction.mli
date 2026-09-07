@@ -80,4 +80,4 @@ val cleanup_package_artefacts: rw switch_state -> package -> unit
 
 (** Compute the set of packages which will need to be downloaded to apply a
     solution. Takes a graph of atomic actions. *)
-val sources_needed: 'a switch_state -> OpamSolver.ActionGraph.t -> package_set
+val sources_needed: 'a switch_state -> OpamSolver.ActionGraph.t -> package_selection
