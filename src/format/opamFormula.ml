@@ -336,10 +336,11 @@ let packages_of_atoms ?(disj=false) pkgset atoms =
         (OpamPackage.packages_of_name pkgset name))
     by_name OpamPackage.Set.empty
 
-let satisfies_depends pkgset f =
+let satisfies_depends sel f =
   eval (fun (name, cstr) ->
-      OpamPackage.Set.exists (fun nv -> check_version_formula cstr nv.version)
-        (OpamPackage.packages_of_name pkgset name))
+      match OpamPackage.Selection.find_opt name sel with
+      | None -> false
+      | Some nv -> check_version_formula cstr nv.version)
     f
 
 let to_string t =

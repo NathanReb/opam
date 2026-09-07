@@ -177,8 +177,8 @@ val equal: t -> t -> bool
     formula) *)
 val verifies: t -> OpamPackage.t -> bool
 
-(** Checks if a given set of (installed) packages satisfies a formula *)
-val satisfies_depends: OpamPackage.Set.t -> t -> bool
+(** Checks if a given selection of (installed) packages satisfies a formula *)
+val satisfies_depends: OpamPackage.Selection.t -> t -> bool
 
 (** Returns the set of names referred to in a formula *)
 val all_names: (OpamPackage.Name.t * 'a) formula -> OpamPackage.Name.Set.t

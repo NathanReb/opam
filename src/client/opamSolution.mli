@@ -21,7 +21,7 @@ val resolve:
   'a switch_state ->
   user_action ->
   ?reinstall:package_set ->
-  requested:package_set ->
+  requested:package_selection ->
   atom request ->
   (action_solution, OpamCudf.conflict) solver_result
 
@@ -35,7 +35,7 @@ val resolve:
 val apply:
   ?ask:bool ->
   rw switch_state ->
-  requested:package_set ->
+  requested:package_selection ->
   ?print_requested:OpamPackage.Name.Set.t ->
   ?add_roots:OpamPackage.Name.Set.t ->
   ?skip:package OpamPackage.Map.t ->
@@ -56,7 +56,7 @@ val resolve_and_apply:
   rw switch_state ->
   user_action ->
   ?reinstall:package_set ->
-  requested:package_set ->
+  requested:package_selection ->
   ?print_requested:OpamPackage.Name.Set.t ->
   ?add_roots:OpamPackage.Name.Set.t ->
   ?assume_built:bool ->
@@ -96,7 +96,8 @@ val install_sys_packages:
    launched, without asking user (used by the `--depext-only` option). If
    [force_depext] is true, it overrides [OpamFile.Config.depext] value. *)
 val install_depexts: ?force_depext:bool -> ?confirm:bool -> rw switch_state ->
-  pkg_to_install:package_set -> pkg_installed:package_set -> rw switch_state
+  pkg_to_install:package_selection -> pkg_installed:package_selection ->
+  rw switch_state
 
 (** {2 Atoms} *)
 

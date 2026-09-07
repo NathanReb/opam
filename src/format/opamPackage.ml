@@ -319,3 +319,115 @@ let max_version set name =
   create name version
 
 module Graph = (OpamParallel.MakeGraph (O) : OpamParallel.GRAPH with type V.t = t)
+
+module Selection = struct
+  exception Multiple_versions of Name.t
+
+  let multiple_versions n = raise (Multiple_versions n)
+
+  type package = t
+
+  (** We use a [package Name.Map.t] rather than a [version Name.Map.t] here
+      because packages are what we use most of the time and this saves us from
+      allocating a package everytime we look up or traverse a selection. *)
+  type t = package Name.Map.t
+
+  let empty = Name.Map.empty
+
+  let is_empty t = Name.Map.is_empty t
+
+  let find = Name.Map.find
+  let find_opt = Name.Map.find_opt
+
+  let has_name n t =
+    match find_opt n t with
+    | Some _ -> true
+    | None -> false
+
+  let mem nv t =
+    match find_opt nv.name t with
+    | Some nv' -> Version.equal nv.version nv'.version
+    | None -> false
+
+  let add nv t = Name.Map.add nv.name nv t
+
+  let remove nv t =
+    Name.Map.update nv.name
+      (function
+        | None -> None
+        | Some nv' when Version.equal nv.version nv'.version -> None
+        | Some nv' -> Some nv')
+      t
+
+  let elements t = Name.Map.values t
+
+  let fold f t acc = Name.Map.fold (fun _n -> f) t acc
+
+  let filter f t = Name.Map.filter (fun _n -> f) t
+
+  type conflict_handler = package -> package -> package option
+
+  let union ?(on_conflict= fun _ nv2 -> Some nv2) t1 t2 =
+    Name.Map.merge
+      (fun _n nv1 nv2 ->
+         match nv1, nv2 with
+         | None, None -> None
+         | Some nv, None
+         | None, Some nv -> Some nv
+         | Some nv1, Some nv2 ->
+           if Version.equal nv1.version nv2.version then Some nv1
+           else on_conflict nv1 nv2)
+      t1 t2
+
+  let inter ?(on_conflict=fun _ _ -> None) t1 t2 = 
+    Name.Map.merge
+      (fun _n nv1 nv2 ->
+         match nv1, nv2 with
+         | None, None
+         | Some _, None
+         | None, Some _ -> None
+         | Some nv1, Some nv2 ->
+           if Version.equal nv1.version nv2.version then Some nv1
+           else on_conflict nv1 nv2)
+      t1 t2
+
+  let diff ?(on_conflict=fun nv1 _ -> Some nv1) t1 t2 =
+    Name.Map.merge
+      (fun _n nv1 nv2 ->
+         match nv1, nv2 with
+         | None, None
+         | None, Some _ -> None
+         | Some nv1, None -> Some nv1
+         | Some nv1, Some nv2 ->
+           if Version.equal nv1.version nv2.version then None
+           else on_conflict nv1 nv2)
+      t1 t2
+
+  (* This one should be temporary and only useful for intermediate commits in
+     this PR *)
+  let from_package_set
+      ?(on_conflict=fun nv _ -> multiple_versions nv.name) set =
+    Set.fold
+      (fun nv acc ->
+         Name.Map.update nv.name
+           (function
+             | None -> Some nv
+             | Some existing_nv ->
+               (* if we reach this, the versions differ, by the set invariant *)
+               on_conflict existing_nv nv)
+           acc)
+      set
+      empty
+
+  let to_package_set t =
+    Name.Map.fold (fun _name nv acc -> Set.add nv acc) t Set.empty
+
+  let names t =
+    Name.Map.fold (fun n _nv acc -> Name.Set.add n acc) t Name.Set.empty
+
+  module Op = struct
+    let (++) t1 t2 = union t1 t2
+    let (--) t1 t2 = diff t1 t2
+    let (%%) t1 t2 = inter t1 t2
+  end
+end

@@ -164,9 +164,7 @@ let all_installed_deps st opam =
   List.fold_left
     (fun deps (n,cstr) ->
        try
-         let nv =
-           OpamPackage.Set.find (fun nv -> nv.name = n) st.installed
-         in
+         let nv = OpamPackage.Selection.find n st.installed in
          let version = nv.version in
          match cstr with
          | None -> OpamPackage.Set.add nv deps
@@ -253,7 +251,7 @@ let resolve st ?opam:opam_arg ?(local=OpamVariable.Map.empty) v =
       | Some o when OpamFile.OPAM.name o = name -> opam_arg
       | _ ->
         try
-          let nv = OpamPackage.package_of_name st.installed name in
+          let nv = OpamPackage.Selection.find name st.installed in
           Some (OpamPackage.Map.find nv st.opams)
         with Not_found -> None
     in
@@ -261,7 +259,7 @@ let resolve st ?opam:opam_arg ?(local=OpamVariable.Map.empty) v =
     let root = st.switch_global.root in
     match var_str, opam with
     | "installed", Some _ ->
-      Some (bool (OpamPackage.has_name st.installed name))
+      Some (bool (OpamPackage.Selection.has_name name st.installed))
     | "installed", None ->
       Some (bool false)
     | "pinned", _ ->
@@ -311,7 +309,7 @@ let resolve st ?opam:opam_arg ?(local=OpamVariable.Map.empty) v =
     | "opamfile", Some opam ->
       let nv = get_nv opam in
       let ret file = Some (string (OpamFile.to_string file)) in
-      if OpamPackage.Set.mem nv st.installed then
+      if OpamPackage.Selection.mem nv st.installed then
         ret (OpamPath.Switch.installed_opam st.switch_global.root st.switch nv)
       else if OpamPackage.Set.mem nv st.pinned then
         ret (OpamPath.Switch.Overlay.opam st.switch_global.root st.switch (OpamPackage.name nv))
