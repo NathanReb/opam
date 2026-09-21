@@ -27,6 +27,8 @@ users)
 
   * Fix a bug where `opam install --depext-only` would try to install depexts of packages that needed to be removed or upgraded [#7166, @NathanReb]
 
+  * Fix a bug triggering unnecessary reinstallation of packages not directly involved in the solution [#7154 @NathanReb]
+
 ## Build (package)
 
 ## Remove
@@ -104,6 +106,7 @@ users)
 ## Internal
   * Remove unecessary set union operations `packages ++ installed` since `installed` is included in `packages` [#7148 @NathanReb]
   * Rewrite inefficient package set <-> map operations [#7159 @NathanReb]
+  * Remove unnecessary set operations in `OpamSwitchSate.universe` [#7154 @NathanReb]
 
 ## Internal: Unix
 
