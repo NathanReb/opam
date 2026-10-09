@@ -83,9 +83,11 @@ let infer_switch_invariant_raw
     gt switch switch_config opams
     packages compiler_packages installed_roots available_packages
   =
-  let compiler = compiler_packages %% installed_roots in
   let compiler =
-    if OpamPackage.Set.is_empty compiler then compiler_packages
+    OpamPackage.Uniset.set_inter compiler_packages installed_roots
+  in
+  let compiler =
+    if OpamPackage.Uniset.is_empty compiler then compiler_packages
     else compiler
   in
   let env nv v =
@@ -128,12 +130,12 @@ let infer_switch_invariant_raw
         in
         dmap)
       (OpamPackage.packages_of_names available_packages @@
-       OpamPackage.names_of_packages @@
+       OpamPackage.Uniset.names @@
        compiler)
       OpamPackage.Map.empty
   in
   let counts =
-    OpamPackage.Set.fold (fun nv counts ->
+    OpamPackage.Uniset.fold (fun nv counts ->
         let count =
           try OpamPackage.Set.cardinal (OpamPackage.Map.find nv dmap)
           with Not_found -> 0
@@ -158,12 +160,11 @@ let infer_switch_invariant_raw
 
 let infer_switch_invariant st =
   let compiler_packages =
-    if OpamPackage.Set.is_empty st.compiler_packages then
+    if OpamPackage.Uniset.is_empty st.compiler_packages then
       OpamPackage.Uniset.filter (fun nv ->
           OpamFile.OPAM.has_flag Pkgflag_Compiler
             (OpamPackage.Map.find nv st.opams))
         st.installed
-      |> OpamPackage.Uniset.to_set
     else st.compiler_packages
   in
   let lazy available_packages = st.available_packages in
@@ -447,9 +448,11 @@ let load lock_kind gt rt switch =
           packages compiler_packages installed_roots available_packages
       in
       log "Inferred invariant: from base packages %a, (roots %a) => %a"
-        (slog OpamPackage.Set.to_string) compiler_packages
+        (slog OpamPackage.Uniset.to_string) compiler_packages
         (slog @@ fun () ->
-         OpamPackage.Set.to_string (compiler_packages %% installed_roots)) ()
+         OpamPackage.Uniset.to_string
+           (OpamPackage.Uniset.set_inter
+              compiler_packages installed_roots)) ()
         (slog OpamFileTools.dep_formula_to_string) invariant;
       let min_opam_version = OpamVersion.of_string "2.0" in
       let opam_version =
@@ -692,7 +695,7 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
     switch_lock = OpamSystem.lock_none;
     switch = OpamSwitch.unset;
     switch_invariant = OpamFormula.Empty;
-    compiler_packages = OpamPackage.Set.empty;
+    compiler_packages = OpamPackage.Uniset.empty;
     switch_config = {
       OpamFile.Switch_config.empty
       with OpamFile.Switch_config.repos = Some repos_list;
@@ -711,13 +714,6 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
     invalidated = lazy (OpamPackage.Set.empty);
     overwrote_opams = OpamPackage.Map.empty;
   }
-
-let installed_set ?(filter=fun _ -> true) st =
-  OpamPackage.Uniset.fold
-    (fun nv acc ->
-       if filter nv then OpamPackage.Set.add nv acc else acc)
-    st.installed
-    OpamPackage.Set.empty
 
 let selections st =
   { sel_installed = st.installed;
@@ -1129,7 +1125,7 @@ let dump_pef_state st oc =
     Printf.fprintf oc "version: %s\n" (OpamPackage.version_to_string nv);
     let installed = OpamPackage.Uniset.mem nv st.installed in
     (* let root = OpamPackage.Set.mem nv st.installed_roots in *)
-    let inv = OpamPackage.Set.mem nv st.compiler_packages in
+    let inv = OpamPackage.Uniset.mem nv st.compiler_packages in
     let pinned = OpamPackage.Set.mem nv st.pinned in
     let available = OpamPackage.Set.mem nv (Lazy.force st.available_packages) in
     let reinstall = OpamPackage.Set.mem nv (Lazy.force st.reinstall) in
@@ -1413,152 +1409,203 @@ let dependencies_filter_to_formula_t ~build ~post st nv =
   in
   OpamFilter.filter_formula ~default:true env
 
-let dependencies_t st base_deps_compute deps_compute
-    ~depopts ~installed ~unavailable packages =
-  if OpamPackage.Set.is_empty packages then OpamPackage.Set.empty else
-  let base =
-    if installed then OpamPackage.Uniset.union_set st.installed packages
-    else if unavailable then packages ++ st.packages
-    else packages ++ (Lazy.force st.available_packages)
-  in
-  log ~level:3 "dependencies packages=%a"
-    (slog OpamPackage.Set.to_string) packages;
-  let timer = OpamConsole.timer () in
-  let base_depends =
-    let filter = base_deps_compute base in
-    let get_deps =
-      get_dependencies_t st
-        ~force_dev_deps:false ~test:false ~doc:false
-        ~dev_setup:false ~requested:packages
-    in
-    let opams =
-      OpamPackage.Set.fold (fun pkg opams ->
-          OpamPackage.Map.add pkg (OpamPackage.Map.find pkg st.opams) opams)
-        base OpamPackage.Map.empty
-    in
-    let u_depends = get_deps OpamFile.OPAM.depends opams in
-    let depends =
-      OpamPackage.Map.filter_map filter u_depends
-    in
-    if depopts then
-      let u_depopts = get_deps OpamFile.OPAM.depopts opams in
-      let depopts =
-        OpamPackage.Map.filter_map filter u_depopts
-      in
-      OpamPackage.Map.strict_union (fun d d' -> OpamFormula.And (d, d'))
-        depopts depends
-    else
-      depends
-  in
-  let result = deps_compute base base_depends packages in
-  log "dependencies (%.3f) result=%a" (timer ())
-    (slog OpamPackage.Set.to_string) result;
-  result
+module type PACKAGE_SET = sig
+  type t
 
-let dependencies st ~build ~post =
-  dependencies_t st
+  val empty : t
+  val is_empty : t -> bool
+  val to_string : t -> string
+  val fold : (package -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+  val to_set : t -> OpamPackage.Set.t
+  val union : ?conflict:(package -> package -> package option) -> t -> t -> t
+  val diff : t -> t -> t
+  val add : package -> t -> t
+  val formula_packages : t -> OpamFormula.t -> t
+  val mem : package -> t -> bool
+end
+
+module Make_deps_calculator(X: PACKAGE_SET) = struct
+  let dependencies_t base st base_deps_compute deps_compute ~depopts packages =
+    if X.is_empty packages then X.empty else
+      let () =
+        log ~level:3 "dependencies packages=%a"
+          (slog X.to_string) packages
+      in
+      let timer = OpamConsole.timer () in
+      let base_depends =
+        let filter = base_deps_compute base in
+        let get_deps =
+          get_dependencies_t st
+            ~force_dev_deps:false ~test:false ~doc:false
+            ~dev_setup:false ~requested:(X.to_set packages)
+        in
+        let opams =
+          X.fold (fun pkg opams ->
+              OpamPackage.Map.add pkg (OpamPackage.Map.find pkg st.opams) opams)
+            base OpamPackage.Map.empty
+        in
+        let u_depends = get_deps OpamFile.OPAM.depends opams in
+        let depends =
+          OpamPackage.Map.filter_map filter u_depends
+        in
+        if depopts then
+          let u_depopts = get_deps OpamFile.OPAM.depopts opams in
+          let depopts =
+            OpamPackage.Map.filter_map filter u_depopts
+          in
+          OpamPackage.Map.strict_union (fun d d' -> OpamFormula.And (d, d'))
+            depopts depends
+        else
+          depends
+      in
+      let result = deps_compute base base_depends packages in
+      log "dependencies (%.3f) result=%a" (timer ())
+        (slog X.to_string) result;
+      result
+
+  let dependencies base st ~build ~post =
+    dependencies_t base st
     (fun base nv ff ->
-       if OpamPackage.Set.mem nv base then Some ff else None)
+       if X.mem nv base then Some ff else None)
     (fun base base_depends packages ->
-       let open OpamPackage.Set.Op in
        let get_deps nvs =
-         OpamPackage.Set.fold (fun nv set ->
+         X.fold (fun nv set ->
              let depends_formula =
                dependencies_filter_to_formula_t ~build ~post st nv
                  (OpamPackage.Map.find nv base_depends)
              in
              if depends_formula = Empty then set else
-             let deps = OpamFormula.packages base depends_formula in
-             if OpamPackage.Set.is_empty deps then set else
-               deps ++ set)
-           nvs OpamPackage.Set.empty
+             let deps = X.formula_packages base depends_formula in
+             if X.is_empty deps then set else
+               X.union deps set)
+           nvs X.empty
        in
        let rec aux all deps =
          let new_deps = get_deps deps in
-         if OpamPackage.Set.is_empty new_deps then all
-         else aux (all ++ new_deps) (new_deps -- all)
+         if X.is_empty new_deps then all
+         else aux (X.union all new_deps) (X.diff new_deps all)
        in
-       aux packages packages)
+       let deps = aux X.empty packages in
+       X.union ~conflict:(fun nv _ -> Some nv) packages deps)
 
-let reverse_dependencies st ~build ~post =
-  dependencies_t st
-    (fun base nv ff ->
-       if OpamPackage.Set.mem nv base then
-         Some (dependencies_filter_to_formula_t ~build ~post st nv ff)
-       else None)
-    (fun base base_depends packages ->
-       let base_int_pkg =
-         OpamPackage.Set.fold (fun nv map ->
-             OpamStd.IntMap.add (Hashtbl.hash nv) nv map)
-           base OpamStd.IntMap.empty
-       in
-       let rev_deps =
-         OpamPackage.Map.fold (fun nv depends_formula rev_deps ->
-             let depends =
-               OpamPackage.Set.fold (fun nv deps ->
-                   Hashtbl.hash nv :: deps)
-                 (OpamFormula.packages base depends_formula) []
-             in
-             List.fold_left (fun rev_deps rev_nv ->
-                 let hash = Hashtbl.hash nv in
-                 OpamStd.IntMap.add_to_list rev_nv hash rev_deps)
-               rev_deps depends)
-           base_depends OpamStd.IntMap.empty
-       in
-       let open OpamStd.IntSet.Op in
-       let get_revdeps all done_ packages =
-         OpamStd.IntSet.fold (fun nv (all, done_, remaining) ->
-             if OpamStd.IntSet.mem nv done_ then
-               all, done_, remaining
-             else
-             match OpamStd.IntMap.find_opt nv rev_deps with
-             | Some deps ->
-               let deps = (OpamStd.IntSet.of_list deps) in
-               deps ++ all,
-               OpamStd.IntSet.add nv done_,
-               deps ++ remaining
-             | None -> all, done_, remaining)
-           packages (all, done_, OpamStd.IntSet.empty)
-       in
-       let rec aux all done_ remaining =
-         let all, done_, remaining =
-           get_revdeps all done_ remaining
+  let reverse_dependencies base st ~build ~post =
+    dependencies_t base st
+      (fun base nv ff ->
+         if X.mem nv base then
+           Some (dependencies_filter_to_formula_t ~build ~post st nv ff)
+         else None)
+      (fun base base_depends packages ->
+         let base_int_pkg =
+           X.fold (fun nv map ->
+               OpamStd.IntMap.add (Hashtbl.hash nv) nv map)
+             base OpamStd.IntMap.empty
          in
-         if OpamStd.IntSet.is_empty remaining then all else
-           aux all done_ remaining
-       in
-       let int_revdeps =
-         let packages =
-           OpamPackage.Set.fold (fun nv set ->
-               OpamStd.IntSet.add (Hashtbl.hash nv) set)
-             packages OpamStd.IntSet.empty
+         let rev_deps =
+           OpamPackage.Map.fold (fun nv depends_formula rev_deps ->
+               let depends =
+                 X.fold (fun nv deps ->
+                     Hashtbl.hash nv :: deps)
+                   (X.formula_packages base depends_formula) []
+               in
+               List.fold_left (fun rev_deps rev_nv ->
+                   let hash = Hashtbl.hash nv in
+                   OpamStd.IntMap.add_to_list rev_nv hash rev_deps)
+                 rev_deps depends)
+             base_depends OpamStd.IntMap.empty
          in
-         aux OpamStd.IntSet.empty OpamStd.IntSet.empty packages
-       in
-       OpamStd.IntSet.fold (fun hash result ->
-           match OpamStd.IntMap.find_opt hash base_int_pkg with
-           | Some nv -> OpamPackage.Set.add nv result
-           | None -> OpamStd.Sys.exit_because `Internal_error)
-         int_revdeps packages)
+         let open OpamStd.IntSet.Op in
+         let get_revdeps all done_ packages =
+           OpamStd.IntSet.fold (fun nv (all, done_, remaining) ->
+               if OpamStd.IntSet.mem nv done_ then
+                 all, done_, remaining
+               else
+                 match OpamStd.IntMap.find_opt nv rev_deps with
+                 | Some deps ->
+                   let deps = (OpamStd.IntSet.of_list deps) in
+                   deps ++ all,
+                   OpamStd.IntSet.add nv done_,
+                   deps ++ remaining
+                 | None -> all, done_, remaining)
+             packages (all, done_, OpamStd.IntSet.empty)
+         in
+         let rec aux all done_ remaining =
+           let all, done_, remaining =
+             get_revdeps all done_ remaining
+           in
+           if OpamStd.IntSet.is_empty remaining then all else
+             aux all done_ remaining
+         in
+         let int_revdeps =
+           let packages =
+             X.fold (fun nv set ->
+                 OpamStd.IntSet.add (Hashtbl.hash nv) set)
+               packages OpamStd.IntSet.empty
+           in
+           aux OpamStd.IntSet.empty OpamStd.IntSet.empty packages
+         in
+         OpamStd.IntSet.fold (fun hash result ->
+             match OpamStd.IntMap.find_opt hash base_int_pkg with
+             | Some nv -> X.add nv result
+             | None -> OpamStd.Sys.exit_because `Internal_error)
+           int_revdeps packages)
+end
+
+module PSet : PACKAGE_SET with type t = OpamPackage.Set.t = struct
+  include OpamPackage.Set
+
+  let to_set x = x
+  let formula_packages = OpamFormula.packages
+  let union ?conflict:_ t1 t2 = union t1 t2
+end
+
+module PUniset : PACKAGE_SET with type t = OpamPackage.Uniset.t = struct
+  include OpamPackage.Uniset
+
+  let formula_packages = OpamFormula.packages_uset
+end
+
+module Set_deps = Make_deps_calculator(PSet)
+module Uniset_deps = Make_deps_calculator(PUniset)
+
+let deps_base ~installed ~unavailable st packages =
+  if installed then OpamPackage.Uniset.union_set st.installed packages
+  else if unavailable then packages ++ st.packages
+  else packages ++ (Lazy.force st.available_packages)
+
+let dependencies st ~build ~post ~depopts ~installed ~unavailable packages =
+  if OpamPackage.Set.is_empty packages then OpamPackage.Set.empty else
+  let base = deps_base ~installed ~unavailable st packages in
+  Set_deps.dependencies base st ~build ~post ~depopts packages
+
+let installed_dependencies st ~build ~post =
+  Uniset_deps.dependencies st.installed st ~build ~post
+
+let reverse_dependencies st ~build ~post ~depopts ~installed ~unavailable
+    packages =
+  if OpamPackage.Set.is_empty packages then OpamPackage.Set.empty else
+  let base = deps_base ~installed ~unavailable st packages in
+  Set_deps.reverse_dependencies base st ~build ~post ~depopts packages
+
+let installed_rev_deps st ~build ~post =
+  Uniset_deps.reverse_dependencies st.installed st ~build ~post
 
 (* invariant computation *)
 
 let invariant_root_packages st =
   OpamPackage.Uniset.filter (OpamFormula.verifies st.switch_invariant)
     st.installed
-  |> OpamPackage.Uniset.to_set
 
 let compute_invariant_packages st =
   let pkgs = invariant_root_packages st in
-  dependencies ~build:false ~post:true ~depopts:false ~installed:true
-    ~unavailable:false st pkgs
+  installed_dependencies ~build:false ~post:true ~depopts:false st pkgs
 
 let compiler_packages st =
   let compiler_packages =
-    installed_set st
-      ~filter:(fun nv ->
-          try OpamFile.OPAM.has_flag Pkgflag_Compiler (opam st nv)
-          with Not_found -> false)
+    OpamPackage.Uniset.filter
+      (fun nv ->
+         try OpamFile.OPAM.has_flag Pkgflag_Compiler (opam st nv)
+         with Not_found -> false)
+      st.installed
   in
-  dependencies ~build:true ~post:false ~depopts:true ~installed:true
-    ~unavailable:false st compiler_packages
+  installed_dependencies ~build:true ~post:false ~depopts:true
+    st compiler_packages

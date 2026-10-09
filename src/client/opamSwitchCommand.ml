@@ -29,7 +29,7 @@ let list gt ~print_short =
   let installed_switches =
     OpamGlobalState.fold_switches (fun sw sel acc ->
         let opams =
-          OpamPackage.Set.fold (fun nv acc ->
+          OpamPackage.Uniset.fold (fun nv acc ->
               match
                 OpamFile.OPAM.read_opt
                   (OpamPath.Switch.installed_opam gt.root sw nv)
@@ -43,7 +43,7 @@ let list gt ~print_short =
         in
         let comp =
           OpamPackage.Map.filter
-            (fun nv _ -> OpamPackage.Set.mem nv sel.sel_compiler)
+            (fun nv _ -> OpamPackage.Uniset.mem nv sel.sel_compiler)
             opams
           |> ifempty opams
         in
@@ -456,17 +456,20 @@ let import_t ?ask ?(deps_only=false) importfile t =
   in
 
   let compiler_packages, to_install =
-    if OpamPackage.Set.is_empty t.compiler_packages then
-      import_sel.sel_compiler %% available,
+    if OpamPackage.Uniset.is_empty t.compiler_packages then
+      OpamPackage.Uniset.set_inter import_sel.sel_compiler available,
       import_sel.sel_installed
     else
       t.compiler_packages,
-      OpamPackage.Uniset.set_diff import_sel.sel_installed import_sel.sel_compiler
+      OpamPackage.Uniset.diff import_sel.sel_installed import_sel.sel_compiler
   in
   let to_install =
     if deps_only then
       OpamPackage.Uniset.set_diff
-        to_install (import_sel.sel_roots -- import_sel.sel_compiler)
+        to_install
+        (OpamPackage.Set.filter
+           (fun nv -> not (OpamPackage.Uniset.mem nv import_sel.sel_compiler))
+           import_sel.sel_roots)
     else to_install
   in
 

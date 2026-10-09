@@ -158,6 +158,15 @@ module Uniset : sig
   val filter : (package -> bool) -> t -> t
   val exists : (package -> bool) -> t -> bool
 
+  (** [map ~conflict f t] returns the uniset [t'] containing the results
+      of applying [f] to elements of [t]. [conflict] is called to determine
+      what to do with conflicting versions of the same package. *)
+  val map :
+    ?conflict:(package -> package -> package option) ->
+    (package -> package) ->
+    t ->
+    t
+
   (** [partition pred t] returns [t1 , t2] where [t1] is all elements of [t]
       that satisfy [pred] and [t2] all elements that do not. *)
   val partition: (package -> bool) -> t -> t * t
@@ -220,6 +229,10 @@ module Uniset : sig
     ?conflict: (package -> package -> package option) -> package list -> t
 
   val names : t -> Name.Set.t
+
+  (** [to_string t] returns a pretty-printed version of [t] for debugging
+      purposes. *)
+  val to_string : t -> string
 
   module Op : sig
 

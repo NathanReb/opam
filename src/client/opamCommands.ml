@@ -1615,10 +1615,10 @@ let config cli =
               (OpamFileTools.dep_formula_to_string state.switch_invariant);
             print "compiler-packages" "%s"
               (let packages = OpamSwitchState.compiler_packages state in
-               if OpamPackage.Set.is_empty packages then "none" else
+               if OpamPackage.Uniset.is_empty packages then "none" else
                  String.concat ", "
                    (List.map OpamPackage.to_string
-                      (OpamPackage.Set.elements packages)));
+                      (OpamPackage.Uniset.elements packages)));
             let process nv =
               try
                 let conf = OpamSwitchState.package_config state nv.name in

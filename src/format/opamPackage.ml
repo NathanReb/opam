@@ -359,10 +359,10 @@ module Uniset = struct
   let add_w_conflict ~conflict nv t =
     Name.Map.update nv.name
       (function
-        | None -> Some nv
-        | Some existing_nv ->
-          (* if we reach this, the versions differ, by the set invariant *)
-          conflict existing_nv nv)
+        | Some existing_nv
+          when not (Version.equal nv.version existing_nv.version) ->
+          conflict existing_nv nv
+        | _ -> Some nv)
       t
 
   let find_set name_set t =
@@ -395,6 +395,9 @@ module Uniset = struct
   let exists f t = Name.Map.exists (fun _n nv -> f nv) t
 
   let partition f t = Name.Map.partition (fun _n nv -> f nv) t
+
+  let map ?(conflict= fun nv _ -> multiple_versions nv.name) f t =
+    fold (fun nv acc -> add_w_conflict ~conflict (f nv) acc) t empty
 
   let union ?(conflict= fun _ nv2 -> Some nv2) t1 t2 =
     Name.Map.union (fun _n nv1 nv2 -> conflict nv1 nv2) t1 t2
@@ -454,6 +457,15 @@ module Uniset = struct
 
   let names t =
     Name.Map.fold (fun n _nv acc -> Name.Set.add n acc) t Name.Set.empty
+
+  let to_string t =
+    let max_print = 100 in
+    let cardinal = Name.Map.cardinal t in
+    if cardinal > max_print then
+      Printf.sprintf "%d elements" cardinal
+    else
+      let l = fold (fun nv l -> to_string nv :: l) t [] in
+      OpamStd.List.to_string (fun x -> x) (List.rev l)
 
   module Op = struct
     let (++) t1 t2 = union t1 t2

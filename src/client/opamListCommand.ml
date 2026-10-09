@@ -245,7 +245,8 @@ let apply_selector ~base st = function
   | Any -> base
   | Installed -> OpamPackage.Uniset.to_set st.installed
   | Root -> st.installed_roots
-  | Compiler -> OpamSwitchState.invariant_root_packages st
+  | Compiler ->
+    OpamPackage.Uniset.to_set (OpamSwitchState.invariant_root_packages st)
   | Available -> Lazy.force st.available_packages
   | Installable ->
     OpamSolver.installable_subset

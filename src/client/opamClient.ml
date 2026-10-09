@@ -232,7 +232,7 @@ let upgrade_t
               approach over a filter *)
            OpamPackage.Name.Set.fold
              OpamPackage.Uniset.remove_name
-             (OpamPackage.names_of_packages t.compiler_packages)
+             (OpamPackage.Uniset.names t.compiler_packages)
              unopt
          in
          let conflicts =
@@ -462,7 +462,8 @@ let update
     let dev_packages, nondev_packages =
       OpamPackage.Set.partition (OpamSwitchState.is_dev_package st) packages
     in
-    let dev_packages = dev_packages -- (st.compiler_packages -- st.pinned) in
+    let compiler_set = OpamPackage.Uniset.to_set st.compiler_packages in
+    let dev_packages = dev_packages -- (compiler_set -- st.pinned) in
     let nondev_packages =
       if names = [] || OpamPackage.Set.is_empty nondev_packages then
         OpamPackage.Set.empty
@@ -2263,7 +2264,7 @@ let install_t t ?ask ?(ignore_conflicts=false) ?(depext_only=false)
                          OpamPackage.Set.add nv t.installed_roots }
             | Some false ->
               if OpamPackage.Set.mem nv t.installed_roots then begin
-                if OpamPackage.Set.mem nv t.compiler_packages then
+                if OpamPackage.Uniset.mem nv t.compiler_packages then
                   OpamConsole.note
                     "Package %s is part of the switch invariant and won't be \
                      uninstalled unless the invariant is updated."
@@ -2483,38 +2484,36 @@ let remove_t ?ask ~autoremove ~force ?(formula=OpamFormula.Empty) atoms t =
     let packages_set = OpamPackage.Uniset.to_set packages in
     let to_remove =
       if autoremove then
-        let installed_set = OpamPackage.Uniset.to_set t.installed in
         let keep =
-          OpamSwitchState.invariant_root_packages t
-          ++ installed_set
-             %% t.installed_roots
-          -- packages_set
+          let open OpamPackage.Uniset.Op in
+          (OpamSwitchState.invariant_root_packages t)
+          ++ (OpamPackage.Uniset.set_inter t.installed t.installed_roots)
+          -- packages
         in
         let keep_cone =
-          keep |> OpamSwitchState.dependencies t
-            ~build:true ~post:true ~depopts:true ~installed:true
-            ~unavailable:false
+          keep |> OpamSwitchState.installed_dependencies t
+            ~build:true ~post:true ~depopts:true
         in
         let autoremove =
-          packages_set ++ (installed_set -- keep_cone)
+          let open OpamPackage.Uniset.Op in
+          packages ++ (t.installed -- keep_cone)
         in
         if atoms = [] then autoremove else
         (* restrict to the dependency cone of removed pkgs *)
         let remove_cone =
-          packages_set |> OpamSwitchState.reverse_dependencies t
-            ~build:true ~post:true ~depopts:false ~installed:true
-            ~unavailable:false
+          packages |> OpamSwitchState.installed_rev_deps t
+            ~build:true ~post:true ~depopts:false
         in
-        autoremove %%
-        (remove_cone |> OpamSwitchState.dependencies t
-           ~build:true ~post:true ~depopts:false ~installed:true
-           ~unavailable:false)
+        OpamPackage.Uniset.inter
+          autoremove
+          (remove_cone |> OpamSwitchState.installed_dependencies t
+             ~build:true ~post:true ~depopts:false)
       else
-        packages_set
+        packages
     in
     let request =
       OpamSolver.request
-        ~remove:(OpamSolution.atoms_of_packages to_remove)
+        ~remove:(OpamSolution.atoms_of_packages_uset to_remove)
         ~deprequest:(OpamFormula.to_atom_formula formula)
         ()
     in

@@ -187,10 +187,23 @@ val dependencies:
   'a switch_state -> build:bool -> post:bool -> depopts:bool ->
   installed:bool -> unavailable:bool -> package_set -> package_set
 
+(** Same as {!dependencies} but only considers installed packages.
+    Note that the given uniset does not necessarily have to be installed
+    but their dependencies will be looked up in the set of installed
+    packages. *)
+val installed_dependencies :
+  'a switch_state -> build:bool -> post:bool -> depopts:bool ->
+   package_uniset -> package_uniset
+
 (** Same as {!dependencies} but for reverse dependencies. *)
 val reverse_dependencies:
   'a switch_state -> build:bool -> post:bool -> depopts:bool ->
   installed:bool -> unavailable:bool -> package_set -> package_set
+
+(** Same as {!reverse_dependencies} but only considers installed packages. *)
+val installed_rev_deps:
+  'a switch_state -> build:bool -> post:bool -> depopts:bool ->
+   package_uniset -> package_uniset
 
 (** Returns required system packages of each of the given packages (elements are
     not added to the map  if they don't have system dependencies) *)
@@ -260,14 +273,14 @@ val update_repositories:
 (** {2 Invariant computation} *)
 
 (* Returns installed root packages of switch invariant *)
-val invariant_root_packages: 'a switch_state -> package_set
+val invariant_root_packages: 'a switch_state -> package_uniset
 
 (* Compute installed invariant dependency cone *)
-val compute_invariant_packages: 'a switch_state -> package_set
+val compute_invariant_packages: 'a switch_state -> package_uniset
 
 (* Returns set of packages of installed compiler packages and their
    dependencies (only build & depopts) *)
-val compiler_packages: 'a switch_state -> package_set
+val compiler_packages: 'a switch_state -> package_uniset
 
 (** {2 User interaction and reporting } *)
 

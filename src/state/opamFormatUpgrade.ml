@@ -502,8 +502,8 @@ let from_1_2_to_1_3_dev2 ~on_the_fly:_ root config =
                 OpamPackage.create name
                   (OpamPackage.Version.of_string "~unknown")
             in
-            OpamPackage.Set.add nv acc)
-          OpamPackage.Set.empty atoms
+            OpamPackage.Uniset.add nv acc)
+          OpamPackage.Uniset.empty atoms
       in
       OpamFile.LegacyState.write (OpamFile.make (switch_dir // "state"))
         { sel_installed = installed;
@@ -665,7 +665,7 @@ let from_1_3_dev2_to_1_3_dev5 ~on_the_fly:_ root conf =
                switch_config);
           { selections with
             sel_installed = OpamPackage.Uniset.add nv selections.sel_installed;
-            sel_compiler = OpamPackage.Set.add nv selections.sel_compiler;
+            sel_compiler = OpamPackage.Uniset.add nv selections.sel_compiler;
             sel_roots = OpamPackage.Set.add nv selections.sel_roots; }
         else selections
       in
@@ -818,7 +818,7 @@ let from_2_0_alpha_to_2_0_alpha2 ~on_the_fly:_ root conf =
       let selections_file = OpamFile.make (meta_dir // "switch-state") in
       let selections = OpamFile.SwitchSelections.BestEffort.safe_read selections_file in
       let new_compilers =
-        OpamPackage.Set.map (fun nv ->
+        OpamPackage.Uniset.map (fun nv ->
             if nv.name <> OpamPackage.Name.of_string "ocaml" then nv else
             let config_f nv =
               OpamFile.make (meta_dir / "config" //
@@ -882,19 +882,19 @@ let from_2_0_alpha_to_2_0_alpha2 ~on_the_fly:_ root conf =
           )
           selections.sel_compiler
       in
-      let sel_installed =
+      let sel_roots =
         OpamPackage.Uniset.union_set
-          (OpamPackage.Uniset.set_diff
-             selections.sel_installed selections.sel_compiler)
           new_compilers
-        |> OpamPackage.Uniset.of_set
+          (OpamPackage.Set.filter
+             (fun nv -> not (OpamPackage.Uniset.mem nv selections.sel_compiler))
+             selections.sel_roots)
       in
       let selections =
-        let open OpamPackage.Set.Op in
+        let open OpamPackage.Uniset.Op in
         { selections with
-          sel_installed;
-          sel_roots = selections.sel_roots
-                      -- selections.sel_compiler ++ new_compilers;
+          sel_installed = selections.sel_installed
+                          -- selections.sel_compiler ++ new_compilers;
+          sel_roots;
           sel_compiler = new_compilers }
       in
       OpamFile.SwitchSelections.write selections_file selections;

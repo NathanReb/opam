@@ -794,7 +794,7 @@ module StateTable = struct
   let empty = {
     sel_installed = OpamPackage.Uniset.empty;
     sel_roots = OpamPackage.Set.empty;
-    sel_compiler = OpamPackage.Set.empty;
+    sel_compiler = OpamPackage.Uniset.empty;
     sel_pinned = OpamPackage.Set.empty;
   }
 
@@ -841,7 +841,7 @@ module StateTable = struct
                       t.sel_roots);
                 sel_compiler = (match state with
                     | `Compiler | `Uninstalled_compiler ->
-                      OpamPackage.Set.add nv t.sel_compiler
+                      OpamPackage.Uniset.add nv t.sel_compiler
                     | `Root | `Installed | `Uninstalled ->
                       t.sel_compiler);
                 sel_pinned = (match pin with
@@ -865,7 +865,7 @@ module StateTable = struct
              M.add nv.name
                (nv.version, (`Root, None)))
            t.sel_roots |>
-         OpamPackage.Set.fold (fun nv acc ->
+         OpamPackage.Uniset.fold (fun nv acc ->
              let name = nv.name in
              try
                let (v, _) = M.find name acc in
@@ -2172,7 +2172,7 @@ module SwitchSelectionsSyntax = struct
   let empty = {
     sel_installed = OpamPackage.Uniset.empty;
     sel_roots = OpamPackage.Set.empty;
-    sel_compiler = OpamPackage.Set.empty;
+    sel_compiler = OpamPackage.Uniset.empty;
     sel_pinned = OpamPackage.Set.empty;
   }
 
@@ -2194,7 +2194,7 @@ module SwitchSelectionsSyntax = struct
       (Pp.V.string -| Pp.of_module "opam-version" (module OpamVersion));
     "compiler", Pp.ppacc
       (fun sel_compiler t -> {t with sel_compiler}) (fun t -> t.sel_compiler)
-      pp_pkglist;
+      pp_pkglist_uset;
     "roots", Pp.ppacc
       (fun sel_roots t -> {t with sel_roots})
       (fun t -> t.sel_roots)
