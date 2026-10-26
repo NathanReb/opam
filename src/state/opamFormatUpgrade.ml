@@ -478,8 +478,8 @@ let from_1_2_to_1_3_dev2 ~on_the_fly:_ root config =
       in
       let sel_pinned =
         OpamPackage.Name.Map.fold
-          (fun name (v,_) -> OpamPackage.Set.add (OpamPackage.create name v))
-          pinned OpamPackage.Set.empty
+          (fun name (v,_) -> OpamPackage.Uniset.add (OpamPackage.create name v))
+          pinned OpamPackage.Uniset.empty
       in
       let compiler =
         let version = match OpamStd.String.cut_at c '+' with
@@ -894,7 +894,7 @@ let from_2_0_alpha_to_2_0_alpha2 ~on_the_fly:_ root conf =
       OpamFile.SwitchSelections.write selections_file selections;
 
       (* Update pinned overlay opam files *)
-      OpamPackage.Set.iter (fun nv ->
+      OpamPackage.Uniset.iter (fun nv ->
           let pkg_dir =
             meta_dir / "overlay" / OpamPackage.Name.to_string nv.name
           in
@@ -979,7 +979,7 @@ let from_2_0_alpha3_to_2_0_beta ~on_the_fly:_ root conf =
                 OpamFilename.(Base.to_string (basename_dir d))
             in
             let dst =
-              if OpamPackage.has_name state.sel_pinned name then
+              if OpamPackage.Uniset.has_name name state.sel_pinned then
                 sources_dir / OpamPackage.Name.to_string name
               else
                 let nv = OpamPackage.Uniset.find name state.sel_installed in

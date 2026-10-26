@@ -44,12 +44,12 @@ let filter_available_packages gt switch switch_config ~opams =
 
 let compute_available_and_pinned_packages gt switch switch_config ~pinned ~opams =
   (* remove all versions of pinned packages, but the pinned-to version *)
-  let pinned_names = OpamPackage.names_of_packages pinned in
+  let pinned_names = OpamPackage.Uniset.names pinned in
   let (opams, pinned) =
     OpamPackage.Map.partition
       (fun nv _ ->
          not (OpamPackage.Name.Set.mem nv.name pinned_names) ||
-         OpamPackage.Set.mem nv pinned)
+         OpamPackage.Uniset.mem nv pinned)
       opams
   in
   (filter_available_packages gt switch switch_config ~opams, pinned)
@@ -322,13 +322,13 @@ let load lock_kind gt rt switch =
     load_selections ~lock_kind gt switch
   in
   let pinned, pinned_opams, pinned_depexts =
-    OpamPackage.Set.fold (fun nv (pinned,opams,pinned_depexts) ->
+    OpamPackage.Uniset.fold (fun nv (pinned,opams,pinned_depexts) ->
         let overlay_dir =
           OpamPath.Switch.Overlay.package gt.root switch nv.name
         in
         match OpamFileTools.read_opam overlay_dir with
         | None -> (* No overlay => just pinned to a version *)
-          OpamPackage.Set.add nv pinned, opams, pinned_depexts
+          OpamPackage.Uniset.add nv pinned, opams, pinned_depexts
         | Some o ->
           let version =
             match OpamFile.OPAM.version_opt o with
@@ -350,9 +350,9 @@ let load lock_kind gt rt switch =
             if OpamSysPkg.Set.is_empty depexts then pinned_depexts else
               OpamPackage.Set.add nv pinned_depexts
           in
-          OpamPackage.Set.add nv pinned, opams, pinned_depexts
+          OpamPackage.Uniset.add nv pinned, opams, pinned_depexts
       )
-      pinned OpamPackage.(Set.empty, Map.empty, Set.empty)
+      pinned OpamPackage.(Uniset.empty, Map.empty, Set.empty)
   in
   let installed_opams =
     let cache_file = OpamPath.Switch.installed_opams_cache gt.root switch in
@@ -702,7 +702,7 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
     };
     installed = OpamPackage.Uniset.empty;
     installed_opams = OpamPackage.Map.empty;
-    pinned = OpamPackage.Set.empty;
+    pinned = OpamPackage.Uniset.empty;
     installed_roots = OpamPackage.Uniset.empty;
     repos_package_index = opams;
     opams;
@@ -788,7 +788,7 @@ let get_package st name =
 
 let is_dev_package st nv =
   let opam_opt =
-    if OpamPackage.Set.mem nv st.pinned then
+    if OpamPackage.Uniset.mem nv st.pinned then
       opam_opt st nv
     else
       match OpamPackage.Map.find_opt nv st.repos_package_index with
@@ -800,10 +800,10 @@ let is_dev_package st nv =
   | None -> false
 
 let is_pinned st name =
-  OpamPackage.has_name st.pinned name
+  OpamPackage.Uniset.has_name name st.pinned
 
 let is_version_pinned st name =
-  match OpamPackage.package_of_name_opt st.pinned name with
+  match OpamPackage.Uniset.find_opt name st.pinned with
   | None -> false
   | Some nv ->
     match opam_opt st nv with
@@ -812,12 +812,12 @@ let is_version_pinned st name =
     | None -> false
 
 let source_dir st nv =
-  if OpamPackage.Set.mem nv st.pinned
+  if OpamPackage.Uniset.mem nv st.pinned
   then OpamPath.Switch.pinned_package st.switch_global.root st.switch nv.name
   else OpamPath.Switch.sources st.switch_global.root st.switch nv
 
 let is_source_dir_temporary st nv =
-  not (OpamPackage.Set.mem nv st.pinned || is_dev_package st nv)
+  not (OpamPackage.Uniset.mem nv st.pinned || is_dev_package st nv)
 
 let overlay_opam_file st name =
   if is_pinned st name then
@@ -839,9 +839,8 @@ let depexts_unavailable st nv =
   depexts_unavailable_raw (Lazy.force st.sys_packages) nv
 
 let dev_packages st =
-  OpamPackage.Set.filter (is_dev_package st)
-    ((OpamPackage.Uniset.to_set st.installed)
-     ++ OpamPinned.packages st)
+  OpamPackage.Uniset.filter (is_dev_package st)
+    (OpamPackage.Uniset.union st.installed (OpamPinned.packages st))
 
 let conflicts_with_helper st subset filter =
   let forward_conflicts, conflict_classes =
@@ -1107,7 +1106,7 @@ let universe st
   u_depopts;
   u_conflicts;
   u_installed_roots = OpamPackage.Uniset.to_set st.installed_roots;
-  u_pinned = OpamPinned.packages st;
+  u_pinned = OpamPackage.Uniset.to_set (OpamPinned.packages st);
   u_invariant;
   u_reinstall;
   u_attrs     = ["opam-query", lazy requested;
@@ -1126,7 +1125,7 @@ let dump_pef_state st oc =
     let installed = OpamPackage.Uniset.mem nv st.installed in
     (* let root = OpamPackage.Set.mem nv st.installed_roots in *)
     let inv = OpamPackage.Uniset.mem nv st.compiler_packages in
-    let pinned = OpamPackage.Set.mem nv st.pinned in
+    let pinned = OpamPackage.Uniset.mem nv st.pinned in
     let available = OpamPackage.Set.mem nv (Lazy.force st.available_packages) in
     let reinstall = OpamPackage.Set.mem nv (Lazy.force st.reinstall) in
     let dev = OpamPackageVar.is_dev_package st opam in
@@ -1321,9 +1320,7 @@ let update_pin nv opam st =
     OpamStd.Option.default nv.version (OpamFile.OPAM.version_opt opam)
   in
   let nv = OpamPackage.create nv.name version in
-  let pinned =
-    OpamPackage.Set.add nv (OpamPackage.filter_name_out st.pinned nv.name)
-  in
+  let pinned = OpamPackage.Uniset.add nv st.pinned in
   let available_packages = lazy (
     OpamPackage.filter_name_out (Lazy.force st.available_packages) nv.name
   ) in
@@ -1574,8 +1571,12 @@ let dependencies st ~build ~post ~depopts ~installed ~unavailable packages =
   let base = deps_base ~installed ~unavailable st packages in
   Set_deps.dependencies base st ~build ~post ~depopts packages
 
-let installed_dependencies st ~build ~post =
-  Uniset_deps.dependencies st.installed st ~build ~post
+let installed_dependencies st ~build ~post ~depopts packages =
+  let base =
+    OpamPackage.Uniset.union
+      ~conflict:(fun _installed nv -> Some nv) st.installed packages
+  in
+  Uniset_deps.dependencies base st ~build ~post ~depopts packages
 
 let reverse_dependencies st ~build ~post ~depopts ~installed ~unavailable
     packages =

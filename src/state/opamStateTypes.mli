@@ -177,7 +177,7 @@ type +'lock switch_state = {
   available_packages: package_set Lazy.t;
   (** The set of available packages, filtered by their [available] field *)
 
-  pinned: package_set;
+  pinned: package_uniset;
   (** The set of pinned packages (their metadata, including pinning target, is
       in {!field:opams}) *)
 

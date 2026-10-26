@@ -795,7 +795,7 @@ module StateTable = struct
     sel_installed = OpamPackage.Uniset.empty;
     sel_roots = OpamPackage.Uniset.empty;
     sel_compiler = OpamPackage.Uniset.empty;
-    sel_pinned = OpamPackage.Set.empty;
+    sel_pinned = OpamPackage.Uniset.empty;
   }
 
   let pp_state =
@@ -846,10 +846,10 @@ module StateTable = struct
                       t.sel_compiler);
                 sel_pinned = (match pin with
                     | Some (Pinned_legacy.Version v) ->
-                      OpamPackage.Set.add (OpamPackage.create name v)
+                      OpamPackage.Uniset.add (OpamPackage.create name v)
                         t.sel_pinned
                     | Some _ ->
-                      OpamPackage.Set.add (OpamPackage.create name version)
+                      OpamPackage.Uniset.add (OpamPackage.create name version)
                         t.sel_pinned
                     | None -> t.sel_pinned);
               })
@@ -875,7 +875,7 @@ module StateTable = struct
                  (nv.version, (`Uninstalled_compiler, None))
                  acc)
            t.sel_compiler |>
-         OpamPackage.Set.fold (fun nv map ->
+         OpamPackage.Uniset.fold (fun nv map ->
              let state =
                try let _, (state, _) = M.find nv.name map in state
                with Not_found -> `Uninstalled
@@ -2173,7 +2173,7 @@ module SwitchSelectionsSyntax = struct
     sel_installed = OpamPackage.Uniset.empty;
     sel_roots = OpamPackage.Uniset.empty;
     sel_compiler = OpamPackage.Uniset.empty;
-    sel_pinned = OpamPackage.Set.empty;
+    sel_pinned = OpamPackage.Uniset.empty;
   }
 
   let pp_package =
@@ -2208,7 +2208,8 @@ module SwitchSelectionsSyntax = struct
              contained in the overlay only *)
           Pp.pp (fun ~pos:_ (nv,_) -> nv) (fun nv -> nv, []) -|
           Pp.V.string -| pp_package) -|
-       Pp.of_pair "Package set" OpamPackage.Set.(of_list, elements))
+       Pp.of_pair "Package Uniset"
+         OpamPackage.Uniset.((fun x -> of_list x), elements))
   ]
 
   let pp_cond ?f ?condition () =

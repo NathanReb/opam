@@ -104,7 +104,7 @@ let add_to_reinstall st ~unpinned_only packages =
   let packages =
     if unpinned_only then
       OpamPackage.Set.filter
-        (fun nv -> not (OpamPackage.has_name st.pinned nv.name))
+        (fun nv -> not (OpamPackage.Uniset.has_name nv.name st.pinned))
         packages
     else packages
   in

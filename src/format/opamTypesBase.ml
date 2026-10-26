@@ -377,7 +377,7 @@ let switch_selections_compare x
     if cmp <> 0 then cmp else
       let cmp = OpamPackage.Uniset.compare x.sel_compiler sel_compiler in
       if cmp <> 0 then cmp else
-        OpamPackage.Set.compare x.sel_pinned sel_pinned
+        OpamPackage.Uniset.compare x.sel_pinned sel_pinned
 
 let switch_selections_equal x y =
   switch_selections_compare x y = 0

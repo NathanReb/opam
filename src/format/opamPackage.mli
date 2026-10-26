@@ -145,6 +145,7 @@ module Uniset : sig
 
   val empty : t
   val is_empty : t -> bool
+  val is_singleton : t -> bool
   val compare : t -> t -> int
   val find : Name.t -> t -> package
   val find_opt : Name.t -> t -> package option
@@ -191,6 +192,8 @@ module Uniset : sig
   val union :
     ?conflict: (package -> package -> package option) -> t -> t -> t
 
+  val strict_union : t -> t -> Set.t
+
   (** [inter ~on_conflit t1 t2] returns the intersection of the uniset
       [t1] and [t2]. *)
   val inter : t -> t -> t
@@ -210,6 +213,9 @@ module Uniset : sig
       set, i.e. elements of [t] that are not in [set]. *)
   val set_diff : t -> Set.t -> t
 
+  (** opposite of {!set_diff}. *)
+  val diff_set : Set.t -> t -> Set.t
+
   (** Builds a uniset from a set of packages.
       When the given set contains more than one version of a given package,
       [conflict] is called (first argument is the one already in the uniset).
@@ -227,6 +233,10 @@ module Uniset : sig
   (** Same as {!of_set} but with list input. *)
   val of_list :
     ?conflict: (package -> package -> package option) -> package list -> t
+
+  val to_list : t -> package list
+
+  val to_list_map : (package -> 'a) -> t -> 'a list
 
   val names : t -> Name.Set.t
 

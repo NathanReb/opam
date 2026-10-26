@@ -71,5 +71,5 @@ val update_switch_state:
   ?installed: package_uniset ->
   ?installed_roots: package_uniset ->
   ?reinstall: package_set ->
-  ?pinned: package_set ->
+  ?pinned: package_uniset ->
   rw switch_state -> rw switch_state

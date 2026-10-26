@@ -124,7 +124,7 @@ let is_dev_package st opam =
   | Some urlf ->
     match OpamFile.URL.(url urlf, checksum urlf) with
     | { OpamUrl.backend = `http; _ }, _
-      when not (OpamPackage.Set.mem (OpamFile.OPAM.package opam) st.pinned) ->
+      when not (OpamPackage.Uniset.mem (OpamFile.OPAM.package opam) st.pinned) ->
       false
     | _, _::_ -> false
     | _, [] -> true
@@ -263,7 +263,7 @@ let resolve st ?opam:opam_arg ?(local=OpamVariable.Map.empty) v =
     | "installed", None ->
       Some (bool false)
     | "pinned", _ ->
-      Some (bool (OpamPackage.has_name st.pinned name))
+      Some (bool (OpamPackage.Uniset.has_name name st.pinned))
     | "name", opam ->
       (* On reinstall, orphan packages are not present in the state, and we
          need to resolve their internal name variable *)
@@ -311,7 +311,7 @@ let resolve st ?opam:opam_arg ?(local=OpamVariable.Map.empty) v =
       let ret file = Some (string (OpamFile.to_string file)) in
       if OpamPackage.Uniset.mem nv st.installed then
         ret (OpamPath.Switch.installed_opam st.switch_global.root st.switch nv)
-      else if OpamPackage.Set.mem nv st.pinned then
+      else if OpamPackage.Uniset.mem nv st.pinned then
         ret (OpamPath.Switch.Overlay.opam st.switch_global.root st.switch (OpamPackage.name nv))
       else if OpamPackage.Set.mem nv st.packages then
         let opam = OpamPackage.Map.find nv st.opams in

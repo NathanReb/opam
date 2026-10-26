@@ -323,7 +323,7 @@ let create
       let st = { st with switch_invariant = invariant; switch_config } in
       let available_packages =
         lazy (OpamSwitchState.compute_available_packages gt switch switch_config
-                ~pinned:OpamPackage.Set.empty
+                ~pinned:OpamPackage.Uniset.empty
                 ~opams:st.opams)
       in
       gt, { st with switch; available_packages }
@@ -443,10 +443,9 @@ let import_t ?ask ?(deps_only=false) importfile t =
   let packages = t.packages ++ OpamPackage.keys opams in
 
   let pinned =
-    let names = OpamPackage.names_of_packages import_sel.sel_pinned in
-    OpamPackage.Set.filter
-      (fun nv -> not (OpamPackage.Name.Set.mem nv.name names)) t.pinned ++
-    import_sel.sel_pinned
+    OpamPackage.Uniset.union
+      ~conflict:(fun _from_t from_import -> Some from_import)
+      t.pinned import_sel.sel_pinned
   in
 
   let available =
@@ -520,7 +519,7 @@ let import_t ?ask ?(deps_only=false) importfile t =
   if not (OpamStateConfig.(!r.dryrun) || OpamClientConfig.(!r.show))
   then begin
     (* Put imported overlays in place *)
-    OpamPackage.Set.iter (fun nv ->
+    OpamPackage.Uniset.iter (fun nv ->
         match OpamPackage.Name.Map.find_opt nv.name import_opams with
         | None -> ()
         | Some opam ->
@@ -600,12 +599,12 @@ let export rt ?(freeze=false) ?(full=false)
     let opams =
       let read_opams read pkgs =
         let src_dir nv =
-          if OpamPackage.Set.mem nv selections.sel_pinned then
+          if OpamPackage.Uniset.mem nv selections.sel_pinned then
             OpamPath.Switch.pinned_package root switch nv.name
           else
             OpamPath.Switch.sources root switch nv
         in
-        OpamPackage.Set.fold (fun nv map ->
+        OpamPackage.Uniset.fold (fun nv map ->
             match read nv with
             | Some opam ->
               let opam =
@@ -625,8 +624,7 @@ let export rt ?(freeze=false) ?(full=false)
         OpamPackage.Map.strict_union (fun a _ -> a) overlays
         @@ read_opams (fun nv -> OpamFile.OPAM.read_opt
                           (OpamPath.Switch.installed_opam root switch nv))
-          ((OpamPackage.Uniset.to_set selections.sel_installed)
-           -- selections.sel_pinned)
+          (OpamPackage.Uniset.diff selections.sel_installed selections.sel_pinned)
     in
     let overlays =
       OpamPackage.Map.fold (fun nv opam nmap ->

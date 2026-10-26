@@ -336,6 +336,8 @@ module Uniset = struct
 
   let is_empty t = Name.Map.is_empty t
 
+  let is_singleton t = Name.Map.is_singleton t
+
   let compare t1 t2 =
     Name.Map.compare (fun nv1 nv2 -> Version.compare nv1.version nv2.version) t1 t2
 
@@ -432,6 +434,8 @@ module Uniset = struct
 
   let set_diff t set = filter (fun nv -> not (Set.mem nv set)) t
 
+  let diff_set set t = Set.filter (fun nv -> not (mem nv t)) set
+
   (* Call [conflict] when there is already a package with the same name.
      Does not check that the versions differ before calling [conflict].
      Only use this when folding over data structure that ensure unicity
@@ -455,8 +459,14 @@ module Uniset = struct
   let of_list ?(conflict=fun nv _ -> multiple_versions nv.name) l =
     List.fold_left (fun acc nv -> add_w_conflict ~conflict nv acc) empty l
 
+  let to_list = elements
+
+  let to_list_map f t = fold (fun nv acc -> f nv :: acc) t []
+
   let names t =
     Name.Map.fold (fun n _nv acc -> Name.Set.add n acc) t Name.Set.empty
+
+  let strict_union t1 t2 = union_set t2 (to_set t1)
 
   let to_string t =
     let max_print = 100 in

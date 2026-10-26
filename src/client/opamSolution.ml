@@ -464,7 +464,7 @@ let parallel_apply t
   let sources_needed =
     let sources_needed = OpamAction.sources_needed t action_graph in
     if not OpamClientConfig.(!r.working_dir) then sources_needed else
-    let no_sources = OpamPackage.Uniset.set_inter requested t.pinned in
+    let no_sources = OpamPackage.Uniset.inter requested t.pinned in
     let no_sources =
       OpamPackage.Uniset.filter (fun nv ->
           OpamStd.Option.Op.(OpamSwitchState.primary_url t nv
@@ -1464,7 +1464,7 @@ let apply ?ask t ~requested ?print_requested ?add_roots
         )  messages in
       let append nv =
         let pinned =
-          if OpamPackage.Set.mem nv t.pinned then " (pinned)"
+          if OpamPackage.Uniset.mem nv t.pinned then " (pinned)"
           else ""
         and deprecated =
           let opam = OpamSwitchState.opam new_state nv in

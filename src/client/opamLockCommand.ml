@@ -37,7 +37,7 @@ let select_packages atom_locs st =
      let packages =
        OpamPackage.Name.Set.fold (fun name acc ->
            let pkg, is_pinned =
-             match OpamPackage.package_of_name_opt st.pinned name with
+             match OpamPackage.Uniset.find_opt name st.pinned with
              | None -> OpamPackage.Uniset.find_opt name st.installed, false
              | pinned -> pinned, true
            in

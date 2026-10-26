@@ -810,7 +810,7 @@ let list ?(force_search=false) cli =
                    Some (OpamPackage.Set.max_elt exist)
              in
              match OpamStd.Option.Op.(
-                 is_missing OpamPackage.Set.Op.(st.packages ++ st.pinned)
+                 is_missing (OpamPackage.Uniset.union_set st.pinned st.packages)
                  >>= OpamSwitchState.depexts_unavailable st) with
              | Some nf ->  OpamStd.String.Map.add str nf missing
              | None -> missing
@@ -1587,9 +1587,9 @@ let config cli =
           | Some switch ->
             OpamSwitchState.with_ `Lock_none ~rt ~switch gt @@ fun state ->
             print "pinned" "%s"
-              (if OpamPackage.Set.is_empty state.pinned then "0" else
+              (if OpamPackage.Uniset.is_empty state.pinned then "0" else
                let pinnings =
-                 OpamPackage.Set.fold (fun nv acc ->
+                 OpamPackage.Uniset.fold (fun nv acc ->
                      let opam = OpamSwitchState.opam state nv in
                      let kind =
                        if Some opam =
@@ -3602,7 +3602,7 @@ let pin ?(unpin_only=false) cli =
             let as_url =
               OpamUrl.parse_opt ~handle_suffix:false ~from_file:false arg
               >>| fun url ->
-              OpamPackage.Set.filter
+              OpamPackage.Uniset.filter
                 (fun nv ->
                    match OpamSwitchState.url st nv with
                    | Some u ->
@@ -3629,7 +3629,7 @@ let pin ?(unpin_only=false) cli =
                      OpamUrl.(u.transport = url.transport) && path_equality ()
                    | None -> false)
                 st.pinned |>
-              OpamPackage.names_of_packages |>
+              OpamPackage.Uniset.names |>
               OpamPackage.Name.Set.elements
             in
             match as_url with
@@ -3659,7 +3659,7 @@ let pin ?(unpin_only=false) cli =
       OpamGlobalState.with_ `Lock_none @@ fun gt ->
       OpamSwitchState.with_ `Lock_write gt @@ fun st ->
       let to_unpin =
-        OpamPackage.Set.to_list_map OpamPackage.name (OpamPinned.packages st)
+        OpamPackage.Uniset.to_list_map OpamPackage.name (OpamPinned.packages st)
       in
       OpamSwitchState.drop @@ OpamClient.PIN.unpin st ~action to_unpin;
       `Ok ()
@@ -4355,7 +4355,7 @@ let clean cli =
            let pinning_overlay_dirs =
              List.map
                (fun nv -> OpamPath.Switch.Overlay.package root sw nv.name)
-               (OpamPackage.Set.elements st.pinned)
+               (OpamPackage.Uniset.elements st.pinned)
            in
            List.iter (fun d ->
                if not (OpamStd.List.mem OpamFilename.Dir.equal
@@ -4364,7 +4364,7 @@ let clean cli =
              (OpamFilename.dirs (OpamPath.Switch.Overlay.dir root sw));
            let keep_sources_dir =
              OpamPackage.Set.elements
-               (OpamPackage.Uniset.union_set
+               (OpamPackage.Uniset.strict_union
                   (OpamPackage.Uniset.filter (OpamSwitchState.is_dev_package st)
                      st.installed)
                   st.pinned)

@@ -252,7 +252,7 @@ let apply_selector ~base st = function
     OpamSolver.installable_subset
       (OpamSwitchState.universe st ~requested:OpamPackage.Set.empty Query)
       base
-  | Pinned -> OpamPinned.packages st
+  | Pinned -> OpamPackage.Uniset.to_set (OpamPinned.packages st)
   | Latests_only ->
     OpamPackage.Name.Map.fold (fun n vset base ->
         OpamPackage.Set.add
@@ -615,8 +615,8 @@ let detail_printer ?prettify ?normalise ?(sort=false) installed st nv =
   | Installed_version ->
     (try OpamPackage.Uniset.find nv.name st.installed |> fun inst_nv ->
          OpamPackage.version_to_string inst_nv |> fun s ->
-         if OpamPackage.Set.mem inst_nv st.pinned then s % [`blue] else
-         if OpamPackage.has_name st.pinned nv.name then s % [`bold;`red] else
+         if OpamPackage.Uniset.mem inst_nv st.pinned then s % [`blue] else
+         if OpamPackage.Uniset.has_name nv.name st.pinned then s % [`bold;`red] else
          (* If package is not installed one, check if it is part of invariant
             formula package, and if it checks formula *)
          if nv <> inst_nv
@@ -627,7 +627,7 @@ let detail_printer ?prettify ?normalise ?(sort=false) installed st nv =
            s % [`magenta]
      with Not_found -> "--" % [`cyan])
   | Pinning_target ->
-    if OpamPackage.Set.mem nv st.pinned then
+    if OpamPackage.Uniset.mem nv st.pinned then
       let opam = get_opam st nv in
       OpamStd.Option.to_string ~none:"--" OpamUrl.to_string
         (OpamFile.OPAM.get_url opam)
@@ -725,9 +725,9 @@ let display st format packages =
       OpamPackage.Name.Set.fold (fun name ->
           let nv =
             try OpamPackage.Uniset.find name st.installed with Not_found ->
+            try OpamPackage.Uniset.find name st.pinned with Not_found ->
             let get = OpamPackage.Set.max_elt in
             let pkgs = OpamPackage.packages_of_name packages name in
-            try get (pkgs %% st.pinned) with Not_found ->
             try get (pkgs %% Lazy.force st.available_packages) with Not_found ->
               get pkgs
           in
@@ -907,7 +907,7 @@ let info st ~fields ~raw ~where ?normalise ?(show_empty=false)
          OpamPackage.Set.iter output_package nvs)
       else
         (let choose =
-           try OpamPackage.Set.choose (nvs %% st.pinned) with Not_found ->
+           try OpamPackage.Uniset.find name st.pinned with Not_found ->
            try OpamPackage.Uniset.find name st.installed with Not_found ->
            try OpamPackage.Set.max_elt (nvs %% Lazy.force st.available_packages)
            with Not_found ->

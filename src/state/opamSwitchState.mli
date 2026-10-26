@@ -52,7 +52,7 @@ val load_selections:
     precomputed in global_state.available_packages once the state is loaded) *)
 val compute_available_packages:
   'a global_state -> switch -> OpamFile.Switch_config.t ->
-  pinned:package_set -> opams:OpamFile.OPAM.t package_map ->
+  pinned:package_uniset -> opams:OpamFile.OPAM.t package_map ->
   package_set
 
 (** Raw function to compute the conflicts for all packages, given
@@ -148,7 +148,7 @@ val is_pinned: 'a switch_state -> name -> bool
 val is_version_pinned: 'a switch_state -> name -> bool
 
 (** The set of all "dev packages" (see {!is_dev_package} for a definition) *)
-val dev_packages: 'a switch_state -> package_set
+val dev_packages: 'a switch_state -> package_uniset
 
 (** Returns the local source mirror for the given package
     ({!OpamPath.Switch.sources} or {!OpamPath.Switch.pinned_package}, depending
@@ -188,9 +188,10 @@ val dependencies:
   installed:bool -> unavailable:bool -> package_set -> package_set
 
 (** Same as {!dependencies} but only considers installed packages.
-    Note that the given uniset does not necessarily have to be installed
-    but their dependencies will be looked up in the set of installed
-    packages. *)
+    Note that in [installed_dependencies st ~build ~post ~depotps uset]
+    [uset] does not have to be installed, their dependencies will be looked up
+    in the set [st.installed ++ uset]. In case of version conflict between
+    [st.installed] and [uset], the version from [uset] is retained. *)
 val installed_dependencies :
   'a switch_state -> build:bool -> post:bool -> depopts:bool ->
    package_uniset -> package_uniset

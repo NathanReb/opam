@@ -350,7 +350,7 @@ let print_solution st new_st missing solution =
       )  messages in
   let append nv =
     let pinned =
-      if OpamPackage.Set.mem nv st.pinned then " (pinned)"
+      if OpamPackage.Uniset.mem nv st.pinned then " (pinned)"
       else ""
     and deprecated =
       let opam = OpamSwitchState.opam new_st nv in

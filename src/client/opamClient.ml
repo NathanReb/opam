@@ -35,7 +35,7 @@ let update_dev_packages_t ?autolock ?(only_installed=false) atoms t =
   let to_update =
     List.fold_left (fun to_update (name,_) ->
         try
-          let nv = OpamPackage.package_of_name t.pinned name in
+          let nv = OpamPackage.Uniset.find name t.pinned in
           if OpamSwitchState.is_dev_package t nv &&
              ( not only_installed ||
                OpamPackage.Uniset.has_name name t.installed )
@@ -75,7 +75,7 @@ let compute_upgrade_t
             let nv = OpamSwitchState.find_installed_package_by_name t n in
             let strict_upgrade_atom = (n, Some (`Gt, nv.version)) in
             if not (OpamSwitchState.is_dev_package t nv) &&
-               not (OpamPackage.has_name t.pinned n) &&
+               not (OpamPackage.Uniset.has_name n t.pinned) &&
                not (OpamPackage.Set.mem nv (Lazy.force t.reinstall)) &&
                OpamPackage.Set.exists
                  (not @* OpamSwitchState.avoid_version t)
@@ -450,7 +450,7 @@ let update
   in
   let packages, ignore_packages =
     if repos_only then OpamPackage.Set.empty, OpamPackage.Set.empty else
-    let packages = OpamPackage.Uniset.union_set st.installed st.pinned in
+    let packages = OpamPackage.Uniset.strict_union st.installed st.pinned in
     let packages =
       if names = [] then packages else
         OpamPackage.Set.filter (fun nv ->
@@ -464,8 +464,12 @@ let update
     let dev_packages, nondev_packages =
       OpamPackage.Set.partition (OpamSwitchState.is_dev_package st) packages
     in
-    let compiler_set = OpamPackage.Uniset.to_set st.compiler_packages in
-    let dev_packages = dev_packages -- (compiler_set -- st.pinned) in
+    let dev_packages =
+      let open OpamPackage.Uniset.Op in
+      OpamPackage.Uniset.diff_set
+        dev_packages
+        (st.compiler_packages -- st.pinned)
+    in
     let nondev_packages =
       if names = [] || OpamPackage.Set.is_empty nondev_packages then
         OpamPackage.Set.empty
@@ -515,7 +519,7 @@ let update
   in
 
   let remaining =
-    let ps = packages ++ ignore_packages in
+    let ps = OpamPackage.Set.union packages ignore_packages in
     List.filter (fun n -> not (
         OpamStd.List.mem OpamRepositoryName.equal
           (OpamRepositoryName.of_string n) repo_names ||
@@ -2099,13 +2103,13 @@ let assume_built_restrictions ?available_packages t atoms =
   in
   let pinned =
     (* Not pinned atoms already removed. *)
-    OpamPackage.Set.filter
+    OpamPackage.Uniset.filter
       (fun p -> List.exists (fun a -> OpamFormula.check a p) atoms)
       t.pinned
   in
   let installed_dependencies =
-    OpamSwitchState.dependencies ~build:false ~post:false
-      ~depopts:false ~installed:true ~unavailable:false
+    OpamSwitchState.installed_dependencies ~build:false ~post:false
+      ~depopts:false
       t pinned
   in
   let available_packages =
@@ -2114,20 +2118,21 @@ let assume_built_restrictions ?available_packages t atoms =
     | None -> Lazy.force t.available_packages
   in
   let uninstalled_dependencies =
-    (OpamPackage.Name.Map.values missing
-     |> List.fold_left OpamPackage.Name.Set.union OpamPackage.Name.Set.empty
-     |> OpamPackage.packages_of_names available_packages)
-    -- installed_dependencies
+    OpamPackage.Uniset.diff_set
+      (OpamPackage.Name.Map.values missing
+       |> List.fold_left OpamPackage.Name.Set.union OpamPackage.Name.Set.empty
+       |> OpamPackage.packages_of_names available_packages)
+      installed_dependencies
   in
   let available_packages = lazy (
     (available_packages -- uninstalled_dependencies) ++
-    (OpamPackage.Uniset.union_set t.installed pinned)
+    (OpamPackage.Uniset.strict_union t.installed pinned)
   ) in
   let fixed_atoms =
     List.map (fun nv ->
         (OpamPackage.name nv , Some (`Eq, OpamPackage.version nv)))
-      (OpamPackage.Set.elements pinned @
-       OpamPackage.Set.elements installed_dependencies)
+      (OpamPackage.Uniset.elements pinned @
+       OpamPackage.Uniset.elements installed_dependencies)
   in
   { t with available_packages }, fixed_atoms
 
@@ -2308,7 +2313,7 @@ let install_t t ?ask ?(ignore_conflicts=false) ?(depext_only=false)
       let opams, pinned =
         OpamPackage.Map.fold (fun nv (was_pinned, opam) (opams, pinned) ->
             OpamPackage.Map.add nv opam opams,
-            if was_pinned then pinned else OpamPackage.Set.remove nv pinned)
+            if was_pinned then pinned else OpamPackage.Uniset.remove nv pinned)
           t.overwrote_opams (t.opams, OpamPinned.packages t)
       in
       {t with opams; pinned; overwrote_opams = OpamPackage.Map.empty}
@@ -2608,8 +2613,8 @@ module PIN = struct
 
   let post_pin_action st was_pinned names =
     let names =
-      OpamPackage.Set.Op.(st.pinned -- was_pinned)
-      |> OpamPackage.names_of_packages
+      OpamPackage.Uniset.Op.(st.pinned -- was_pinned)
+      |> OpamPackage.Uniset.names
       |> (fun s ->
           List.fold_left
             (fun s p -> OpamPackage.Name.Set.add p s)
@@ -2720,7 +2725,7 @@ module PIN = struct
   let edit st ?(action=true) ?version ?locked name =
     let pinned = st.pinned in
     let st =
-      if OpamPackage.has_name st.pinned name then
+      if OpamPackage.Uniset.has_name name st.pinned then
         edit st ?version name
       else
       let pin_nv =
@@ -2758,8 +2763,8 @@ module PIN = struct
     let pinned_before = st.pinned in
     let st = unpin st names in
     let installed_unpinned =
-      OpamPackage.Uniset.set_inter
-        st.installed (pinned_before -- st.pinned)
+      let open OpamPackage.Uniset.Op in
+      st.installed %% (pinned_before -- st.pinned)
     in
     if action && not (OpamPackage.Uniset.is_empty installed_unpinned) then
       let all =
@@ -2767,12 +2772,13 @@ module PIN = struct
           installed_unpinned []
       in
       let requested =
-        OpamPackage.packages_of_names pinned_before
+        OpamPackage.Uniset.find_set
           (OpamPackage.Name.Set.of_list names)
+          pinned_before
       in
       let st, solution =
         OpamSolution.resolve_and_apply st Upgrade
-          ~requested
+          ~requested:(OpamPackage.Uniset.to_set requested)
           (OpamSolver.request ~all ())
       in
       OpamSolution.check_solution st solution;
