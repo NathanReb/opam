@@ -465,11 +465,8 @@ let import_t ?ask ?(deps_only=false) importfile t =
   in
   let to_install =
     if deps_only then
-      OpamPackage.Uniset.set_diff
-        to_install
-        (OpamPackage.Set.filter
-           (fun nv -> not (OpamPackage.Uniset.mem nv import_sel.sel_compiler))
-           import_sel.sel_roots)
+      let open OpamPackage.Uniset.Op in
+      to_install -- (import_sel.sel_roots -- import_sel.sel_compiler)
     else to_install
   in
 
@@ -509,7 +506,7 @@ let import_t ?ask ?(deps_only=false) importfile t =
       OpamSolution.atoms_of_packages_uset unavailable_version
     in
 
-    let add_roots = OpamPackage.names_of_packages import_sel.sel_roots in
+    let add_roots = OpamPackage.Uniset.names import_sel.sel_roots in
     let requested =
       OpamPackage.Uniset.(to_set (union to_install_avail unavailable_version))
     in
@@ -688,7 +685,7 @@ let reinstall init_st =
   let st =
     { init_st with
       installed = OpamPackage.Uniset.empty;
-      installed_roots = OpamPackage.Set.empty;
+      installed_roots = OpamPackage.Uniset.empty;
       reinstall = lazy OpamPackage.Set.empty; }
   in
   import_t { OpamFile.SwitchExport.

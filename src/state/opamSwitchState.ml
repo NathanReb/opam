@@ -84,7 +84,7 @@ let infer_switch_invariant_raw
     packages compiler_packages installed_roots available_packages
   =
   let compiler =
-    OpamPackage.Uniset.set_inter compiler_packages installed_roots
+    OpamPackage.Uniset.inter compiler_packages installed_roots
   in
   let compiler =
     if OpamPackage.Uniset.is_empty compiler then compiler_packages
@@ -451,7 +451,7 @@ let load lock_kind gt rt switch =
         (slog OpamPackage.Uniset.to_string) compiler_packages
         (slog @@ fun () ->
          OpamPackage.Uniset.to_string
-           (OpamPackage.Uniset.set_inter
+           (OpamPackage.Uniset.inter
               compiler_packages installed_roots)) ()
         (slog OpamFileTools.dep_formula_to_string) invariant;
       let min_opam_version = OpamVersion.of_string "2.0" in
@@ -703,7 +703,7 @@ let load_virtual ?repos_list ?(avail_default=true) gt rt =
     installed = OpamPackage.Uniset.empty;
     installed_opams = OpamPackage.Map.empty;
     pinned = OpamPackage.Set.empty;
-    installed_roots = OpamPackage.Set.empty;
+    installed_roots = OpamPackage.Uniset.empty;
     repos_package_index = opams;
     opams;
     conf_files = OpamPackage.Name.Map.empty;
@@ -1106,7 +1106,7 @@ let universe st
   u_depends;
   u_depopts;
   u_conflicts;
-  u_installed_roots = st.installed_roots;
+  u_installed_roots = OpamPackage.Uniset.to_set st.installed_roots;
   u_pinned = OpamPinned.packages st;
   u_invariant;
   u_reinstall;
@@ -1350,12 +1350,9 @@ let do_backup lock st = match lock with
                   "\nThe former state can be restored with:\n\
                   \    %s switch import %S\n"
                   Sys.executable_name (OpamFile.to_string file) ^
-                if OpamPackage.Set.is_empty
-                    (OpamPackage.Set.filter
-                       (fun nv ->
-                          not
-                            (OpamPackage.Uniset.mem nv new_selections.sel_installed))
-                       new_selections.sel_roots)
+                if OpamPackage.Uniset.is_empty
+                     (OpamPackage.Uniset.diff
+                       new_selections.sel_roots new_selections.sel_installed)
                 then "" else
                   Printf.sprintf
                     "Or you can retry to install your package selection with:\n\

@@ -454,7 +454,7 @@ let from_1_2_to_1_3_dev2 ~on_the_fly:_ root config =
         OpamFile.PkgUList.safe_read (OpamFile.make installed_f)
       in
       let installed_roots =
-        OpamFile.PkgList.safe_read (OpamFile.make installed_roots_f)
+        OpamFile.PkgUList.safe_read (OpamFile.make installed_roots_f)
       in
       let pinned =
         OpamFile.Pinned_legacy.safe_read (OpamFile.make pinned_f)
@@ -666,7 +666,7 @@ let from_1_3_dev2_to_1_3_dev5 ~on_the_fly:_ root conf =
           { selections with
             sel_installed = OpamPackage.Uniset.add nv selections.sel_installed;
             sel_compiler = OpamPackage.Uniset.add nv selections.sel_compiler;
-            sel_roots = OpamPackage.Set.add nv selections.sel_roots; }
+            sel_roots = OpamPackage.Uniset.add nv selections.sel_roots; }
         else selections
       in
       OpamFile.SwitchSelections.write selections_f selections;
@@ -882,19 +882,13 @@ let from_2_0_alpha_to_2_0_alpha2 ~on_the_fly:_ root conf =
           )
           selections.sel_compiler
       in
-      let sel_roots =
-        OpamPackage.Uniset.union_set
-          new_compilers
-          (OpamPackage.Set.filter
-             (fun nv -> not (OpamPackage.Uniset.mem nv selections.sel_compiler))
-             selections.sel_roots)
-      in
       let selections =
         let open OpamPackage.Uniset.Op in
         { selections with
           sel_installed = selections.sel_installed
                           -- selections.sel_compiler ++ new_compilers;
-          sel_roots;
+          sel_roots = selections.sel_roots
+                      -- selections.sel_compiler ++ new_compilers;
           sel_compiler = new_compilers }
       in
       OpamFile.SwitchSelections.write selections_file selections;

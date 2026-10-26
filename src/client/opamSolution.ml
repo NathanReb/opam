@@ -343,7 +343,7 @@ let parallel_apply t
 
   let root_installs =
     OpamPackage.Name.Set.union
-      (OpamPackage.names_of_packages t.installed_roots) @@
+      (OpamPackage.Uniset.names t.installed_roots) @@
     match add_roots with
     | Some r -> r
     | None ->

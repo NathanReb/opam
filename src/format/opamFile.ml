@@ -793,7 +793,7 @@ module StateTable = struct
 
   let empty = {
     sel_installed = OpamPackage.Uniset.empty;
-    sel_roots = OpamPackage.Set.empty;
+    sel_roots = OpamPackage.Uniset.empty;
     sel_compiler = OpamPackage.Uniset.empty;
     sel_pinned = OpamPackage.Set.empty;
   }
@@ -836,7 +836,7 @@ module StateTable = struct
                       t.sel_installed);
                 sel_roots = (match state with
                     | `Root | `Compiler ->
-                      OpamPackage.Set.add nv t.sel_roots
+                      OpamPackage.Uniset.add nv t.sel_roots
                     | `Installed | `Uninstalled | `Uninstalled_compiler ->
                       t.sel_roots);
                 sel_compiler = (match state with
@@ -861,7 +861,7 @@ module StateTable = struct
              M.add nv.name
                (nv.version, (`Installed, None)))
            t.sel_installed |>
-         OpamPackage.Set.fold (fun nv ->
+         OpamPackage.Uniset.fold (fun nv ->
              M.add nv.name
                (nv.version, (`Root, None)))
            t.sel_roots |>
@@ -2171,7 +2171,7 @@ module SwitchSelectionsSyntax = struct
 
   let empty = {
     sel_installed = OpamPackage.Uniset.empty;
-    sel_roots = OpamPackage.Set.empty;
+    sel_roots = OpamPackage.Uniset.empty;
     sel_compiler = OpamPackage.Uniset.empty;
     sel_pinned = OpamPackage.Set.empty;
   }
@@ -2180,10 +2180,6 @@ module SwitchSelectionsSyntax = struct
     Pp.of_module "package" (module OpamPackage)
 
   let pp_pkglist =
-    Pp.V.map_list (Pp.V.string -| pp_package) -|
-    Pp.pp (fun ~pos:_ -> OpamPackage.Set.of_list) OpamPackage.Set.elements
-
-  let pp_pkglist_uset =
     Pp.V.map_list (Pp.V.string -| pp_package) -|
     Pp.pp (fun ~pos:_ l -> OpamPackage.Uniset.of_list l)
       OpamPackage.Uniset.elements
@@ -2194,7 +2190,7 @@ module SwitchSelectionsSyntax = struct
       (Pp.V.string -| Pp.of_module "opam-version" (module OpamVersion));
     "compiler", Pp.ppacc
       (fun sel_compiler t -> {t with sel_compiler}) (fun t -> t.sel_compiler)
-      pp_pkglist_uset;
+      pp_pkglist;
     "roots", Pp.ppacc
       (fun sel_roots t -> {t with sel_roots})
       (fun t -> t.sel_roots)
@@ -2203,7 +2199,7 @@ module SwitchSelectionsSyntax = struct
       (fun installed t ->
          {t with sel_installed = installed})
       (fun t -> t.sel_installed)
-      pp_pkglist_uset;
+      pp_pkglist;
     "pinned", Pp.ppacc
       (fun sel_pinned t -> {t with sel_pinned}) (fun t -> t.sel_pinned)
       (Pp.V.map_list ~depth:1

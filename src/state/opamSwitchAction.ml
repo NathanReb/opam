@@ -219,11 +219,8 @@ let add_to_installed st ?(root=false) nv =
       ~installed:(OpamPackage.Uniset.add nv st.installed)
       ~reinstall:(OpamPackage.Set.remove nv (Lazy.force st.reinstall))
       ~installed_roots:
-        (let roots =
-           OpamPackage.Set.filter (fun nv1 -> nv1.name <> nv.name)
-             st.installed_roots
-         in
-         if root then OpamPackage.Set.add nv roots else st.installed_roots)
+        (if root then OpamPackage.Uniset.add nv st.installed_roots
+         else st.installed_roots)
   in
   let opam = OpamSwitchState.opam st nv in
   let conf =
@@ -246,7 +243,7 @@ let remove_from_installed ?(keep_as_root=false) st nv =
     update_switch_state st
       ~installed:(OpamPackage.Uniset.remove nv st.installed)
       ?installed_roots:(if keep_as_root then None
-                        else Some (rm st.installed_roots))
+                        else Some (OpamPackage.Uniset.remove nv st.installed_roots))
       ~reinstall:(rm (Lazy.force st.reinstall))
   in
   let has_setenv =

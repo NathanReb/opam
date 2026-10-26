@@ -69,7 +69,7 @@ val remove_from_installed:
     are written to disk and returned *)
 val update_switch_state:
   ?installed: package_uniset ->
-  ?installed_roots: package_set ->
+  ?installed_roots: package_uniset ->
   ?reinstall: package_set ->
   ?pinned: package_set ->
   rw switch_state -> rw switch_state

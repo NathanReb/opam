@@ -371,9 +371,9 @@ let fixup ?(formula=OpamFormula.Empty) t =
   let resolve pkgs =
     pkgs,
     OpamSolution.resolve t Upgrade
-      ~requested:pkgs
+      ~requested:(OpamPackage.Uniset.to_set pkgs)
       (OpamSolver.request
-         ~install:(OpamSolution.atoms_of_packages pkgs)
+         ~install:(OpamSolution.atoms_of_packages_uset pkgs)
          ~all:[]
          ~criteria:`Fixup
          ~deprequest:(OpamFormula.to_atom_formula formula)
@@ -391,13 +391,15 @@ let fixup ?(formula=OpamFormula.Empty) t =
   let requested, solution =
     let s =
       log "fixup-1/ keep installed packages with orphaned versions and roots";
-      resolve (t.installed_roots %% (OpamPackage.Uniset.to_set t.installed)
-               %% Lazy.force t.available_packages)
+      resolve
+        OpamPackage.Uniset.(set_inter
+                              (inter t.installed_roots t.installed)
+                              (Lazy.force t.available_packages))
     in
     if is_success s then s else
     let s =
       log "fixup-2/ last resort: no constraints. This should never fail";
-      resolve OpamPackage.Set.empty
+      resolve OpamPackage.Uniset.empty
     in
     s
     (* Could still fail with uninstallable base packages actually, but we
@@ -415,11 +417,11 @@ let fixup ?(formula=OpamFormula.Empty) t =
       t, Conflicts cs
     | Success solution ->
       let print_requested =
-        print_requested (OpamPackage.names_of_packages requested) formula
+        print_requested (OpamPackage.Uniset.names requested) formula
       in
       let t, res =
         OpamSolution.apply ~ask:true t
-          ~requested
+          ~requested:(OpamPackage.Uniset.to_set requested)
           ~print_requested
           solution in
       t, Success res
@@ -2256,21 +2258,21 @@ let install_t t ?ask ?(ignore_conflicts=false) ?(depext_only=false)
                   (OpamPackage.Version.to_string nv.version);
               t
             | Some true ->
-              if OpamPackage.Set.mem nv t.installed_roots then
+              if OpamPackage.Uniset.mem nv t.installed_roots then
                 OpamConsole.note
                   "Package %s is already installed as a root."
                   (OpamPackage.Name.to_string nv.name);
               { t with installed_roots =
-                         OpamPackage.Set.add nv t.installed_roots }
+                         OpamPackage.Uniset.add nv t.installed_roots }
             | Some false ->
-              if OpamPackage.Set.mem nv t.installed_roots then begin
+              if OpamPackage.Uniset.mem nv t.installed_roots then begin
                 if OpamPackage.Uniset.mem nv t.compiler_packages then
                   OpamConsole.note
                     "Package %s is part of the switch invariant and won't be \
                      uninstalled unless the invariant is updated."
                     (OpamPackage.name_to_string nv);
                 { t with installed_roots =
-                           OpamPackage.Set.remove nv t.installed_roots }
+                           OpamPackage.Uniset.remove nv t.installed_roots }
               end else
                 (OpamConsole.note
                    "Package %s is already marked as 'installed automatically'."
@@ -2279,16 +2281,16 @@ let install_t t ?ask ?(ignore_conflicts=false) ?(depext_only=false)
           else t
         ) pkg_skip t in
   if t.installed_roots <> current_roots then (
-    let diff = t.installed_roots -- current_roots in
-    if not (OpamPackage.Set.is_empty diff) then
-      let diff = OpamPackage.Set.elements diff in
+    let diff = OpamPackage.Uniset.diff t.installed_roots current_roots in
+    if not (OpamPackage.Uniset.is_empty diff) then
+      let diff = OpamPackage.Uniset.elements diff in
       let diff = List.rev (List.rev_map OpamPackage.to_string diff) in
       OpamConsole.msg
         "Adding %s to the list of installed roots.\n"
         (OpamStd.Format.pretty_list diff)
     else (
-      let diff = current_roots -- t.installed_roots in
-      let diff = OpamPackage.Set.elements diff in
+      let diff = OpamPackage.Uniset.diff current_roots t.installed_roots in
+      let diff = OpamPackage.Uniset.elements diff in
       let diff = List.rev (List.rev_map OpamPackage.to_string diff) in
       OpamConsole.msg
         "Removing %s from the list of installed roots.\n"
@@ -2487,7 +2489,7 @@ let remove_t ?ask ~autoremove ~force ?(formula=OpamFormula.Empty) atoms t =
         let keep =
           let open OpamPackage.Uniset.Op in
           (OpamSwitchState.invariant_root_packages t)
-          ++ (OpamPackage.Uniset.set_inter t.installed t.installed_roots)
+          ++ (t.installed %% t.installed_roots)
           -- packages
         in
         let keep_cone =

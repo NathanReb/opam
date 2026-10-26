@@ -244,7 +244,7 @@ let uses_depexts = function
 let apply_selector ~base st = function
   | Any -> base
   | Installed -> OpamPackage.Uniset.to_set st.installed
-  | Root -> st.installed_roots
+  | Root -> OpamPackage.Uniset.to_set st.installed_roots
   | Compiler ->
     OpamPackage.Uniset.to_set (OpamSwitchState.invariant_root_packages st)
   | Available -> Lazy.force st.available_packages
@@ -549,7 +549,7 @@ let detail_printer ?prettify ?normalise ?(sort=false) installed st nv =
   let open OpamStd.Option.Op in
   let (%) s cols = OpamConsole.colorise' cols s in
   let root_sty =
-    if OpamPackage.Set.mem nv st.installed_roots then [`underline]
+    if OpamPackage.Uniset.mem nv st.installed_roots then [`underline]
     else []
   in
   let get_opam =

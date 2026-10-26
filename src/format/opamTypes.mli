@@ -356,7 +356,7 @@ type 'a switch_map = 'a OpamSwitch.Map.t
 
 type switch_selections = {
   sel_installed: package_uniset;
-  sel_roots: package_set;
+  sel_roots: package_uniset;
   sel_compiler: package_uniset;
   sel_pinned: package_set;
 }

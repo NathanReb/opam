@@ -373,7 +373,7 @@ let switch_selections_compare x
     {sel_installed; sel_roots; sel_compiler; sel_pinned} =
   let cmp = OpamPackage.Uniset.compare x.sel_installed sel_installed in
   if cmp <> 0 then cmp else
-    let cmp = OpamPackage.Set.compare x.sel_roots sel_roots in
+    let cmp = OpamPackage.Uniset.compare x.sel_roots sel_roots in
     if cmp <> 0 then cmp else
       let cmp = OpamPackage.Uniset.compare x.sel_compiler sel_compiler in
       if cmp <> 0 then cmp else

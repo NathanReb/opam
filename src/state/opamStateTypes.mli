@@ -188,7 +188,7 @@ type +'lock switch_state = {
   (** The cached metadata of installed packages (may differ from the metadata
       that is in {!field:opams} for updated packages) *)
 
-  installed_roots: package_set;
+  installed_roots: package_uniset;
   (** The set of packages explicitly installed by the user. Some of them may
       happen not to be installed at some point, but this indicates that the
       user would like them installed. *)

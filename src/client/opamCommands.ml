@@ -1910,19 +1910,17 @@ let install cli =
     let atoms_or_locals =
       if restore then
         let to_restore =
-          OpamPackage.Set.filter
-            (fun nv -> not (OpamPackage.Uniset.mem nv st.installed))
-            st.installed_roots
+          OpamPackage.Uniset.diff st.installed_roots st.installed
         in
-        if OpamPackage.Set.is_empty to_restore then
+        if OpamPackage.Uniset.is_empty to_restore then
           OpamConsole.msg "No packages to restore found\n"
         else
           OpamConsole.msg "Packages to be restored: %s\n"
             (OpamPackage.Name.Set.to_string
-               (OpamPackage.names_of_packages to_restore));
+               (OpamPackage.Uniset.names to_restore));
         atoms_or_locals @
         List.map (fun p -> `Atom (OpamSolution.atom_of_package p))
-          (OpamPackage.Set.elements to_restore)
+          (OpamPackage.Uniset.elements to_restore)
       else atoms_or_locals
     in
     if formula = OpamFormula.Empty && atoms_or_locals = [] then `Ok () else
